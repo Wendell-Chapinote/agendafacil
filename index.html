@@ -402,7 +402,7 @@ const App = {
     <div class="app-wrap">
       <div class="painel-header">
         <div><div class="painel-title">${negocio.nome}</div><div class="painel-sub">Olá, ${session.nome} 👋</div></div>
-        <button style="position:relative;z-index:999;cursor:pointer;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-family:'DM Sans',sans-serif;" onclick="DB.clearSession();location.hash='login';">Sair</button>
+        <button style="position:relative;z-index:999;cursor:pointer;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-family:'DM Sans',sans-serif;" onclick="sessionStorage.removeItem('session');location.hash='';location.reload();">Sair</button>
       </div>
       <div style="background:var(--dark);padding:0 20px 16px;">
         <div style="background:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.3);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:8px;">
