@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1A1A1A">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AgendaFácil">
+  <title>AgendaFácil</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+:root {
+  --gold:#D4AF37;--gold-light:#F0C040;--gold-pale:#FEF3C7;
+  --dark:#1A1A1A;--dark2:#2A2A2A;--bg:#F7F4EF;--white:#FFFFFF;
+  --gray:#F5F5F5;--muted:#888888;--border:#E8E4DC;
+  --red:#EF4444;--green:#10B981;--blue:#3B82F6;
+  --radius:16px;--radius-sm:10px;
+  --shadow:0 2px 12px rgba(0,0,0,0.08);--shadow-lg:0 8px 32px rgba(0,0,0,0.12);
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--dark);min-height:100vh;font-size:15px;line-height:1.5}
+.app-wrap{max-width:430px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;overflow-x:hidden}
+/* HERO */
+.hero{position:relative;overflow:hidden}
+.hero-cover{width:100%;height:160px;background:linear-gradient(135deg,#1a1a1a,#2a2a2a);background-size:cover;background-position:center;position:relative}
+.hero-cover-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,rgba(0,0,0,0.3),rgba(0,0,0,0.7))}
+.hero-body{background:var(--dark);padding:16px 20px 20px;position:relative}
+.hero-body::after{content:'';position:absolute;top:-60px;right:-40px;width:180px;height:180px;background:radial-gradient(circle,rgba(212,175,55,0.18),transparent 70%);border-radius:50%;pointer-events:none}
+.hero-row{display:flex;align-items:center;gap:14px;position:relative;z-index:1}
+.hero-logo{width:58px;height:58px;background:linear-gradient(135deg,var(--gold),var(--gold-light));border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:26px;flex-shrink:0;border:3px solid var(--dark);overflow:hidden;margin-top:-28px}
+.hero-logo img{width:100%;height:100%;object-fit:cover}
+.hero-name{font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:var(--white);line-height:1.1}
+.hero-sub{font-size:12px;color:var(--gold);font-weight:500;margin-top:3px}
+.hero-stats{display:flex;gap:0;margin-top:16px;position:relative;z-index:1;background:rgba(255,255,255,0.05);border-radius:12px;overflow:hidden}
+.hero-stat{flex:1;text-align:center;padding:12px 8px;border-right:1px solid rgba(255,255,255,0.08)}
+.hero-stat:last-child{border-right:none}
+.stat-val{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--gold)}
+.stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+/* CONTENT */
+.content{padding:20px 20px 120px}
+.section{margin-bottom:24px}
+.section-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:10px}
+/* SERVICES */
+.service-list{display:flex;flex-direction:column;gap:10px}
+.service-card{background:var(--white);border-radius:var(--radius);padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border:2px solid transparent;cursor:pointer;transition:all .2s;box-shadow:var(--shadow)}
+.service-card:hover{border-color:var(--gold);transform:translateX(2px)}
+.service-card.selected{border-color:var(--gold);background:var(--gold-pale)}
+.service-left{display:flex;align-items:center;gap:12px}
+.service-icon{width:40px;height:40px;background:var(--gray);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.service-card.selected .service-icon{background:#fde68a}
+.service-name{font-size:14px;font-weight:600}
+.service-dur{font-size:11px;color:var(--muted);margin-top:2px}
+.service-right{display:flex;align-items:center;gap:8px}
+.service-price{font-family:'Playfair Display',serif;font-size:17px;font-weight:700}
+.service-card.selected .service-price{color:#92400e}
+.check{width:22px;height:22px;background:var(--gold);border-radius:50%;display:none;align-items:center;justify-content:center;font-size:11px;color:var(--dark);font-weight:700}
+.service-card.selected .check{display:flex}
+/* BARBERS */
+.barber-list{display:flex;gap:12px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.barber-list::-webkit-scrollbar{display:none}
+.barber-card{flex-shrink:0;text-align:center;cursor:pointer}
+.barber-avatar{width:60px;height:60px;border-radius:18px;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:28px;border:2px solid transparent;transition:all .2s;margin:0 auto 6px;overflow:hidden}
+.barber-card.selected .barber-avatar{border-color:var(--gold);background:var(--gold-pale)}
+.barber-name{font-size:11px;font-weight:600;color:var(--muted)}
+.barber-card.selected .barber-name{color:#92400e}
+/* CALENDAR */
+.cal-wrap{background:var(--white);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-month{font-family:'Playfair Display',serif;font-size:16px;font-weight:700}
+.cal-nav{width:30px;height:30px;background:var(--gray);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;border:none;transition:background .15s}
+.cal-nav:hover{background:var(--border)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-daylbl{font-size:10px;font-weight:700;color:var(--muted);text-align:center;padding:4px 0;text-transform:uppercase}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;transition:all .15s;border:none;background:transparent}
+.cal-day:hover:not(.disabled):not(.empty){background:var(--gray)}
+.cal-day.today{background:var(--gray);font-weight:700}
+.cal-day.selected{background:var(--dark);color:var(--white);font-weight:700}
+.cal-day.disabled{color:#ccc;cursor:not-allowed}
+.cal-day.blocked{color:#ccc;cursor:not-allowed;background:#fafafa;text-decoration:line-through}
+.cal-day.empty{cursor:default}
+/* TIMES */
+.time-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.time-slot{background:var(--white);border-radius:var(--radius-sm);padding:10px 4px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;border:2px solid transparent;transition:all .15s;box-shadow:var(--shadow)}
+.time-slot:hover:not(.busy){border-color:var(--gold)}
+.time-slot.selected{background:var(--dark);color:var(--white);border-color:var(--dark)}
+.time-slot.busy{background:var(--gray);color:#ccc;cursor:not-allowed;text-decoration:line-through;font-size:11px}
+/* FORM */
+.form-group{margin-bottom:12px}
+.input-wrap{position:relative}
+.input-icon{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:16px}
+.form-input{width:100%;background:var(--white);border:2px solid var(--border);border-radius:14px;padding:14px 14px 14px 44px;font-family:'DM Sans',sans-serif;font-size:14px;color:var(--dark);outline:none;transition:border-color .2s;box-shadow:var(--shadow)}
+.form-input:focus{border-color:var(--gold)}
+.form-input::placeholder{color:#bbb}
+.form-input.error{border-color:var(--red)}
+.form-input.no-icon{padding-left:14px}
+.form-label{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:6px;display:block}
+/* SUMMARY */
+.summary-box{background:var(--dark);border-radius:var(--radius);padding:18px}
+.summary-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--gold);font-weight:700;margin-bottom:12px}
+.summary-row{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid #2a2a2a}
+.summary-row:last-child{border-bottom:none}
+.summary-lbl{color:var(--muted)}
+.summary-val{font-weight:600;color:var(--white)}
+.summary-val.gold{color:var(--gold);font-family:'Playfair Display',serif;font-size:16px}
+/* STICKY BTN */
+.sticky-btn{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;padding:16px 20px 32px;background:linear-gradient(to top,var(--bg) 70%,transparent);z-index:50}
+.btn-primary{width:100%;padding:16px;background:linear-gradient(135deg,var(--gold),var(--gold-light));border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;color:var(--dark);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 20px rgba(212,175,55,.35);transition:all .2s}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(212,175,55,.45)}
+.btn-primary:active{transform:translateY(0)}
+.btn-secondary{width:100%;padding:14px;background:var(--dark);border:none;border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:var(--white);cursor:pointer;transition:opacity .2s}
+.btn-secondary:hover{opacity:.85}
+.btn-danger{padding:6px 12px;background:transparent;border:1px solid var(--red);border-radius:8px;font-size:12px;font-weight:600;color:var(--red);cursor:pointer;transition:all .15s}
+.btn-danger:hover{background:var(--red);color:white}
+.btn-sm{padding:6px 14px;font-size:12px;font-weight:600;border-radius:8px;border:none;cursor:pointer;transition:all .15s}
+.btn-confirm-ag{background:var(--green);color:white}
+.btn-cancel-ag{background:transparent;border:1px solid var(--red);color:var(--red)}
+/* SUCCESS */
+.success-wrap{display:none;position:fixed;inset:0;background:var(--bg);z-index:100;flex-direction:column;align-items:center;justify-content:center;padding:40px 28px;text-align:center;overflow-y:auto}
+.success-wrap.show{display:flex}
+.success-icon{width:80px;height:80px;background:linear-gradient(135deg,var(--gold),var(--gold-light));border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:36px;margin-bottom:24px;box-shadow:0 8px 32px rgba(212,175,55,.3)}
+.success-title{font-family:'Playfair Display',serif;font-size:28px;font-weight:900;margin-bottom:8px}
+.success-sub{font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:28px}
+.success-card{background:var(--white);border-radius:var(--radius);padding:20px;width:100%;text-align:left;box-shadow:var(--shadow);margin-bottom:20px}
+.success-row{display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)}
+.success-row:last-child{border-bottom:none}
+.s-icon{font-size:18px}
+.s-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.s-val{font-size:14px;font-weight:600;margin-top:1px}
+/* PAINEL */
+.painel-header{background:var(--dark);padding:48px 20px 16px;display:flex;align-items:flex-start;justify-content:space-between}
+.painel-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:var(--white)}
+.painel-sub{font-size:12px;color:var(--muted);margin-top:2px}
+.logout-btn{background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;flex-shrink:0}
+.tabs{display:flex;background:var(--white);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex-shrink:0;padding:14px 12px;text-align:center;font-size:12px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;color:var(--muted);transition:all .15s;white-space:nowrap}
+.tab.active{color:var(--dark);border-bottom-color:var(--gold)}
+.painel-content{padding:20px;padding-bottom:40px}
+/* AGENDA CARDS */
+.ag-card{background:var(--white);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);border-left:4px solid var(--border)}
+.ag-card.pendente{border-left-color:var(--gold)}
+.ag-card.confirmado{border-left-color:var(--green)}
+.ag-card.cancelado{border-left-color:#ccc;opacity:.6}
+.ag-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
+.ag-nome{font-size:15px;font-weight:700}
+.ag-status{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:3px 8px;border-radius:6px}
+.ag-status.pendente{background:#fef3c7;color:#92400e}
+.ag-status.confirmado{background:#d1fae5;color:#065f46}
+.ag-status.cancelado{background:var(--gray);color:var(--muted)}
+.ag-info{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px;margin-bottom:12px}
+.ag-info span{display:flex;align-items:center;gap:6px}
+.ag-actions{display:flex;gap:8px;flex-wrap:wrap}
+/* CONFIG */
+.cfg-card{background:var(--white);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:center}
+.cfg-info{flex:1}
+.cfg-name{font-size:14px;font-weight:600}
+.cfg-detail{font-size:12px;color:var(--muted);margin-top:2px}
+.cfg-actions{display:flex;gap:8px}
+/* ADD FORM */
+.add-form{background:var(--white);border-radius:var(--radius);padding:18px;margin-bottom:16px;box-shadow:var(--shadow)}
+.add-form-title{font-size:14px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+/* AUTH */
+.auth-wrap{min-height:100vh;display:flex;flex-direction:column}
+.auth-hero{background:var(--dark);padding:60px 28px 40px;text-align:center}
+.auth-logo{font-size:40px;margin-bottom:12px}
+.auth-brand{font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:var(--white)}
+.auth-tagline{font-size:13px;color:var(--muted);margin-top:6px}
+.auth-body{flex:1;padding:28px 24px 40px}
+.auth-title{font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:6px}
+.auth-sub{font-size:13px;color:var(--muted);margin-bottom:24px}
+.auth-switch{text-align:center;margin-top:20px;font-size:13px;color:var(--muted)}
+.auth-switch a{color:var(--dark);font-weight:700;cursor:pointer;text-decoration:underline}
+.link-preview{background:var(--gray);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--muted);margin-top:6px;display:flex;align-items:center;gap:6px}
+.link-preview strong{color:var(--dark)}
+/* HORÁRIO CONFIG */
+.day-row{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--white);border-radius:12px;margin-bottom:8px;box-shadow:var(--shadow)}
+.day-toggle{position:relative;width:40px;height:22px;flex-shrink:0}
+.day-toggle input{opacity:0;width:0;height:0}
+.day-slider{position:absolute;inset:0;background:#ccc;border-radius:22px;cursor:pointer;transition:.3s}
+.day-slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s}
+.day-toggle input:checked+.day-slider{background:var(--gold)}
+.day-toggle input:checked+.day-slider:before{transform:translateX(18px)}
+.day-name{font-size:13px;font-weight:600;width:36px;flex-shrink:0}
+.day-times{display:flex;gap:6px;flex:1;align-items:center}
+.time-input{width:74px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg)}
+.time-sep{font-size:11px;color:var(--muted)}
+/* UPLOAD FOTO */
+.photo-upload{display:flex;flex-direction:column;gap:12px}
+.photo-box{width:100%;height:120px;background:var(--gray);border:2px dashed var(--border);border-radius:var(--radius);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;overflow:hidden;transition:border-color .2s}
+.photo-box:hover{border-color:var(--gold)}
+.photo-box img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.photo-box-label{font-size:12px;color:var(--muted);text-align:center;z-index:1}
+.photo-box input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.logo-box{width:80px;height:80px;background:var(--gray);border:2px dashed var(--border);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;overflow:hidden;flex-shrink:0;transition:border-color .2s}
+.logo-box:hover{border-color:var(--gold)}
+.logo-box img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.logo-box input{position:absolute;inset:0;opacity:0;cursor:pointer}
+/* EMPTY */
+.empty-state{text-align:center;padding:48px 20px;color:var(--muted)}
+.empty-icon{font-size:40px;margin-bottom:12px}
+.empty-text{font-size:14px}
+/* TOAST */
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--dark);color:var(--white);padding:12px 20px;border-radius:12px;font-size:13px;font-weight:500;z-index:999;opacity:0;transition:all .3s;white-space:nowrap;box-shadow:var(--shadow-lg)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+/* DIVIDER */
+.section-divider{height:1px;background:var(--border);margin:20px 0}
+@media(min-width:430px){.app-wrap{box-shadow:0 0 60px rgba(0,0,0,.15)}}
+  </style>
+</head>
+<body>
+<div id="app"><div style="display:flex;align-items:center;justify-content:center;min-height:100vh;background:#1A1A1A;color:white;font-family:sans-serif;">Carregando...</div></div>
+<script>
+// ============================================
+// DB
+// ============================================
+const DB = {
+  getNegocio(slug){const a=JSON.parse(localStorage.getItem('negocios')||'[]');return a.find(n=>n.slug===slug)||null},
+  getNegocioById(id){const a=JSON.parse(localStorage.getItem('negocios')||'[]');return a.find(n=>n.id===id)||null},
+  saveNegocio(n){const a=JSON.parse(localStorage.getItem('negocios')||'[]');const i=a.findIndex(x=>x.id===n.id);if(i>=0)a[i]=n;else a.push(n);localStorage.setItem('negocios',JSON.stringify(a))},
+  getServicos(nId){return(JSON.parse(localStorage.getItem('servicos')||'[]')).filter(s=>s.negocioId===nId)},
+  saveServico(s){const a=JSON.parse(localStorage.getItem('servicos')||'[]');const i=a.findIndex(x=>x.id===s.id);if(i>=0)a[i]=s;else a.push(s);localStorage.setItem('servicos',JSON.stringify(a))},
+  deleteServico(id){localStorage.setItem('servicos',JSON.stringify((JSON.parse(localStorage.getItem('servicos')||'[]')).filter(s=>s.id!==id)))},
+  getProfissionais(nId){return(JSON.parse(localStorage.getItem('profissionais')||'[]')).filter(p=>p.negocioId===nId)},
+  saveProfissional(p){const a=JSON.parse(localStorage.getItem('profissionais')||'[]');const i=a.findIndex(x=>x.id===p.id);if(i>=0)a[i]=p;else a.push(p);localStorage.setItem('profissionais',JSON.stringify(a))},
+  deleteProfissional(id){localStorage.setItem('profissionais',JSON.stringify((JSON.parse(localStorage.getItem('profissionais')||'[]')).filter(p=>p.id!==id)))},
+  getAgendamentos(nId){return(JSON.parse(localStorage.getItem('agendamentos')||'[]')).filter(a=>a.negocioId===nId)},
+  saveAgendamento(ag){const a=JSON.parse(localStorage.getItem('agendamentos')||'[]');const i=a.findIndex(x=>x.id===ag.id);if(i>=0)a[i]=ag;else a.push(ag);localStorage.setItem('agendamentos',JSON.stringify(a))},
+  updateStatus(id,status){const a=JSON.parse(localStorage.getItem('agendamentos')||'[]');const i=a.findIndex(x=>x.id===id);if(i>=0){a[i].status=status;localStorage.setItem('agendamentos',JSON.stringify(a))}},
+  getHorariosOcupados(nId,pId,data){return(JSON.parse(localStorage.getItem('agendamentos')||'[]')).filter(a=>a.negocioId===nId&&a.profissionalId===pId&&a.data===data&&a.status!=='cancelado').map(a=>a.hora)},
+  getHorarios(nId){return JSON.parse(localStorage.getItem('horarios_'+nId)||'null')},
+  saveHorarios(nId,h){localStorage.setItem('horarios_'+nId,JSON.stringify(h))},
+  login(email,senha){return(JSON.parse(localStorage.getItem('users')||'[]')).find(u=>u.email===email&&u.senha===senha)||null},
+  register(nome,email,senha,slug,nomeBarbearia){
+    const users=JSON.parse(localStorage.getItem('users')||'[]');
+    if(users.find(u=>u.email===email))return{error:'E-mail já cadastrado'};
+    const negocios=JSON.parse(localStorage.getItem('negocios')||'[]');
+    if(negocios.find(n=>n.slug===slug))return{error:'Link já em uso, escolha outro'};
+    const userId='u_'+Date.now();const negocioId='n_'+Date.now();
+    users.push({id:userId,nome,email,senha,negocioId});
+    localStorage.setItem('users',JSON.stringify(users));
+    negocios.push({id:negocioId,nome:nomeBarbearia,slug,dono:userId,telefone:'',logo:'',capa:''});
+    localStorage.setItem('negocios',JSON.stringify(negocios));
+    const servicos=JSON.parse(localStorage.getItem('servicos')||'[]');
+    servicos.push({id:'s_'+Date.now(),negocioId,nome:'Corte Masculino',duracao:30,preco:45});
+    localStorage.setItem('servicos',JSON.stringify(servicos));
+    const profs=JSON.parse(localStorage.getItem('profissionais')||'[]');
+    profs.push({id:'p_'+Date.now(),negocioId,nome});
+    localStorage.setItem('profissionais',JSON.stringify(profs));
+    // horários padrão seg-sex 8-18
+    const defaultH={0:{on:false,inicio:'08:00',fim:'18:00'},1:{on:true,inicio:'08:00',fim:'18:00'},2:{on:true,inicio:'08:00',fim:'18:00'},3:{on:true,inicio:'08:00',fim:'18:00'},4:{on:true,inicio:'08:00',fim:'18:00'},5:{on:true,inicio:'08:00',fim:'18:00'},6:{on:true,inicio:'08:00',fim:'13:00'},bloqueados:[]};
+    localStorage.setItem('horarios_'+negocioId,JSON.stringify(defaultH));
+    return{userId,negocioId};
+  },
+  getSession(){return JSON.parse(sessionStorage.getItem('session')||'null')},
+  setSession(u){sessionStorage.setItem('session',JSON.stringify(u))},
+  clearSession(){sessionStorage.removeItem('session')},
+  uid(){return '_'+Math.random().toString(36).substr(2,9)},
+};
+
+// Seed demo
+(function(){
+  const negocios=JSON.parse(localStorage.getItem('negocios')||'[]');
+  if(negocios.find(n=>n.slug==='barbearia-demo'))return;
+  const nId='n_demo',uId='u_demo';
+  const users=JSON.parse(localStorage.getItem('users')||'[]');
+  users.push({id:uId,nome:'João Silva',email:'demo@agendafacil.com',senha:'123456',negocioId:nId});
+  localStorage.setItem('users',JSON.stringify(users));
+  negocios.push({id:nId,nome:'Barbearia do João',slug:'barbearia-demo',dono:uId,telefone:'(11)99999-9999',logo:'',capa:''});
+  localStorage.setItem('negocios',JSON.stringify(negocios));
+  const s=JSON.parse(localStorage.getItem('servicos')||'[]');
+  s.push({id:'s1',negocioId:nId,nome:'Corte Masculino',duracao:30,preco:45},{id:'s2',negocioId:nId,nome:'Corte + Barba',duracao:50,preco:70},{id:'s3',negocioId:nId,nome:'Pacote Premium',duracao:75,preco:100});
+  localStorage.setItem('servicos',JSON.stringify(s));
+  const p=JSON.parse(localStorage.getItem('profissionais')||'[]');
+  p.push({id:'p1',negocioId:nId,nome:'João'},{id:'p2',negocioId:nId,nome:'Pedro'},{id:'p3',negocioId:nId,nome:'Carlos'});
+  localStorage.setItem('profissionais',JSON.stringify(p));
+  const h={0:{on:false,inicio:'08:00',fim:'18:00'},1:{on:true,inicio:'08:00',fim:'18:00'},2:{on:true,inicio:'08:00',fim:'18:00'},3:{on:true,inicio:'08:00',fim:'18:00'},4:{on:true,inicio:'08:00',fim:'18:00'},5:{on:true,inicio:'08:00',fim:'18:00'},6:{on:true,inicio:'08:00',fim:'13:00'},bloqueados:[]};
+  localStorage.setItem('horarios_'+nId,JSON.stringify(h));
+})();
+</script>
+<script>
+// ============================================
+// APP
+// ============================================
+const App = {
+  currentNegocio:null,currentSlug:null,
+  selectedServico:null,selectedProfissional:null,selectedData:null,selectedHora:null,
+  calMonth:new Date().getMonth(),calYear:new Date().getFullYear(),
+
+  init(){
+    const hash=location.hash.replace('#','')||'';
+    const parts=hash.split('/');
+    if(parts[0]==='agendar'&&parts[1])this.showAgendarPage(parts[1]);
+    else if(parts[0]==='cancelar')this.showCancelarPage(parts[1]||'');
+    else if(parts[0]==='painel')this.checkAuthAndShowPainel();
+    else if(parts[0]==='login')this.showLogin();
+    else if(parts[0]==='register')this.showRegister();
+    else this.showHome();
+  },
+
+  navigate(h){location.hash=h},
+
+  // HOME
+  showHome(){
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div style="background:var(--dark);padding:60px 28px 48px;text-align:center;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div style="font-size:52px;margin-bottom:16px;">✂️</div>
+        <div style="font-family:'Playfair Display',serif;font-size:32px;font-weight:900;color:white;margin-bottom:8px;">AgendaFácil</div>
+        <div style="font-size:14px;color:var(--muted);margin-bottom:36px;line-height:1.6;">Agendamento online para<br>barbearias e salões</div>
+        <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:12px;">
+          <button class="btn-primary" onclick="App.navigate('login')" style="width:100%;margin-bottom:12px;">Entrar no meu painel</button>
+          <button class="btn-secondary" onclick="App.navigate('register')" style="width:100%;">Cadastrar meu comércio</button>
+        </div>
+      </div>
+    </div>`;
+  },
+
+  doLoginDemo(){const u=DB.login('demo@agendafacil.com','123456');if(u){DB.setSession(u);this.showPainel(u)}},
+
+  // AUTH
+  showLogin(){
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap"><div class="auth-wrap">
+      <div class="auth-hero"><div class="auth-logo">✂️</div><div class="auth-brand">AgendaFácil</div><div class="auth-tagline">Painel do profissional</div></div>
+      <div class="auth-body">
+        <div class="auth-title">Bem-vindo de volta</div>
+        <div class="auth-sub">Entre para gerenciar seus agendamentos</div>
+        <div id="login-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="login-email" placeholder="Seu e-mail"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="login-senha" placeholder="Senha"></div></div>
+        <button class="btn-primary" onclick="App.doLogin()" style="margin-top:8px;">Entrar</button>
+        <div class="auth-switch">Não tem conta? <a onclick="App.navigate('register')">Cadastrar grátis</a></div>
+      </div>
+    </div></div>`;
+  },
+
+  doLogin(){
+    const email=document.getElementById('login-email').value.trim();
+    const senha=document.getElementById('login-senha').value;
+    const user=DB.login(email,senha);
+    if(!user){const el=document.getElementById('login-error');el.textContent='E-mail ou senha incorretos.';el.style.display='block';return}
+    DB.setSession(user);this.showPainel(user);
+  },
+
+  showRegister(){
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap"><div class="auth-wrap">
+      <div class="auth-hero"><div class="auth-logo">✂️</div><div class="auth-brand">AgendaFácil</div><div class="auth-tagline">Cadastre sua barbearia grátis</div></div>
+      <div class="auth-body">
+        <div class="auth-title">Criar conta</div>
+        <div class="auth-sub">Em menos de 2 minutos você terá seu link de agendamento</div>
+        <div id="reg-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="reg-nome" placeholder="Seu nome"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🏪</span><input class="form-input" type="text" id="reg-barbearia" placeholder="Nome da barbearia"></div></div>
+        <div class="form-group">
+          <label class="form-label">Link de agendamento</label>
+          <div class="input-wrap"><span class="input-icon">🔗</span><input class="form-input" type="text" id="reg-slug" placeholder="minha-barbearia" oninput="App.updateSlugPreview()"></div>
+          <div class="link-preview">agendafacil.app/<strong id="slug-preview">minha-barbearia</strong></div>
+        </div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="reg-email" placeholder="Seu e-mail"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="reg-senha" placeholder="Crie uma senha"></div></div>
+        <button class="btn-primary" onclick="App.doRegister()" style="margin-top:8px;">Criar minha conta grátis</button>
+        <div class="auth-switch">Já tem conta? <a onclick="App.navigate('login')">Entrar</a></div>
+      </div>
+    </div></div>`;
+  },
+
+  updateSlugPreview(){
+    const v=document.getElementById('reg-slug').value.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
+    document.getElementById('reg-slug').value=v;
+    document.getElementById('slug-preview').textContent=v||'minha-barbearia';
+  },
+
+  doRegister(){
+    const nome=document.getElementById('reg-nome').value.trim();
+    const barbearia=document.getElementById('reg-barbearia').value.trim();
+    const slug=document.getElementById('reg-slug').value.trim();
+    const email=document.getElementById('reg-email').value.trim();
+    const senha=document.getElementById('reg-senha').value;
+    const errEl=document.getElementById('reg-error');
+    if(!nome||!barbearia||!slug||!email||!senha){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
+    if(senha.length<6){errEl.textContent='Senha deve ter pelo menos 6 caracteres.';errEl.style.display='block';return}
+    const result=DB.register(nome,email,senha,slug,barbearia);
+    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
+    const user=DB.login(email,senha);DB.setSession(user);this.showPainel(user);
+  },
+
+  checkAuthAndShowPainel(){
+    const s=DB.getSession();if(!s){this.navigate('login');return}this.showPainel(s);
+  },
+
+  // PAINEL
+  showPainel(session){
+    const negocio=DB.getNegocioById(session.negocioId);
+    if(!negocio){DB.clearSession();this.navigate('login');return}
+    const capa=negocio.capa?`url(${negocio.capa})`:'linear-gradient(135deg,#1a1a1a,#2a2a2a)';
+    const logo=negocio.logo?`<img src="${negocio.logo}">`:'✂️';
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div class="painel-header">
+        <div><div class="painel-title">${negocio.nome}</div><div class="painel-sub">Olá, ${session.nome} 👋</div></div>
+        <button style="position:relative;z-index:999;cursor:pointer;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-family:'DM Sans',sans-serif;" onclick="DB.clearSession();location.hash='login';">Sair</button>
+      </div>
+      <div style="background:var(--dark);padding:0 20px 16px;">
+        <div style="background:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.3);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:8px;">
+          🔗 Link: <strong>…/agendar/${negocio.slug}</strong>
+          <span onclick="App.copyLink('${negocio.slug}')" style="cursor:pointer;margin-left:auto;background:rgba(212,175,55,0.2);padding:3px 8px;border-radius:6px;">Copiar</span>
+        </div>
+      </div>
+      <div class="tabs">
+        <div class="tab active" onclick="App.switchTab('agenda',this)">📅 Agenda</div>
+        <div class="tab" onclick="App.switchTab('servicos',this)">✂️ Serviços</div>
+        <div class="tab" onclick="App.switchTab('profissionais',this)">👤 Equipe</div>
+        <div class="tab" onclick="App.switchTab('horarios',this)">🕐 Horários</div>
+        <div class="tab" onclick="App.switchTab('config',this)">⚙️ Config</div>
+      </div>
+      <div class="painel-content" id="painel-content">${this.renderAgenda(negocio.id)}</div>
+    </div>
+    <div class="toast" id="toast"></div>`;
+  },
+
+  switchTab(tab,el){
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    el.classList.add('active');
+    const session=DB.getSession();
+    const negocio=DB.getNegocioById(session.negocioId);
+    const c=document.getElementById('painel-content');
+    if(tab==='agenda')c.innerHTML=this.renderAgenda(negocio.id);
+    else if(tab==='servicos')c.innerHTML=this.renderServicos(negocio.id);
+    else if(tab==='profissionais')c.innerHTML=this.renderProfissionais(negocio.id);
+    else if(tab==='horarios')c.innerHTML=this.renderHorarios(negocio.id);
+    else if(tab==='config')c.innerHTML=this.renderConfig(negocio);
+  },
+
+  // AGENDA
+  renderAgenda(negocioId){
+    const today=new Date().toISOString().split('T')[0];
+    const ags=DB.getAgendamentos(negocioId).filter(a=>a.data>=today).sort((a,b)=>(a.data+a.hora).localeCompare(b.data+b.hora));
+    if(!ags.length)return`<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Nenhum agendamento ainda.<br>Compartilhe seu link com os clientes!</div></div>`;
+    return ags.map(ag=>{
+      const s=DB.getServicos(negocioId).find(x=>x.id===ag.servicoId);
+      const p=DB.getProfissionais(negocioId).find(x=>x.id===ag.profissionalId);
+      const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'});
+      const actions=ag.status==='pendente'?`
+        <button class="btn-sm btn-confirm-ag" onclick="App.updateAg('${ag.id}','confirmado')">✓ Confirmar</button>
+        <button class="btn-sm btn-cancel-ag" onclick="App.updateAg('${ag.id}','cancelado')">✕ Cancelar</button>`
+      :ag.status==='confirmado'?`<button class="btn-sm btn-cancel-ag" onclick="App.updateAg('${ag.id}','cancelado')">✕ Cancelar agendamento</button>`:'';
+      return`<div class="ag-card ${ag.status}">
+        <div class="ag-head"><div class="ag-nome">${ag.clienteNome}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
+        <div class="ag-info">
+          <span>📱 ${ag.clienteTel}</span>
+          <span>✂️ ${s?s.nome:'-'} · R$${s?s.preco:'-'}</span>
+          <span>👤 ${p?p.nome:'-'}</span>
+          <span>📅 ${df} às ${ag.hora}</span>
+        </div>
+        <div class="ag-actions">${actions}</div>
+      </div>`;
+    }).join('');
+  },
+
+  updateAg(id,status){
+    DB.updateStatus(id,status);
+    const n=DB.getNegocioById(DB.getSession().negocioId);
+    document.getElementById('painel-content').innerHTML=this.renderAgenda(n.id);
+    this.showToast(status==='confirmado'?'✅ Confirmado!':(status==='cancelado'?'❌ Cancelado':''));
+  },
+
+  // SERVIÇOS
+  renderServicos(negocioId){
+    const servicos=DB.getServicos(negocioId);
+    return`<div class="add-form">
+      <div class="add-form-title">➕ Novo serviço</div>
+      <div class="form-group"><input class="form-input no-icon" type="text" id="s-nome" placeholder="Nome do serviço"></div>
+      <div class="form-row" style="margin-bottom:12px;">
+        <div><label class="form-label">Duração (min)</label><input class="form-input no-icon" type="number" id="s-dur" placeholder="30"></div>
+        <div><label class="form-label">Preço (R$)</label><input class="form-input no-icon" type="number" id="s-preco" placeholder="50"></div>
+      </div>
+      <button class="btn-primary" onclick="App.addServico('${negocioId}')">Adicionar serviço</button>
+    </div>
+    ${servicos.length?servicos.map(s=>`<div class="cfg-card"><div class="cfg-info"><div class="cfg-name">✂️ ${s.nome}</div><div class="cfg-detail">${s.duracao} min · R$${s.preco}</div></div><button class="btn-danger" onclick="App.deleteServico('${s.id}','${negocioId}')">Remover</button></div>`).join(''):'<div class="empty-state"><div class="empty-icon">✂️</div><div class="empty-text">Nenhum serviço cadastrado</div></div>'}`;
+  },
+
+  addServico(nId){
+    const nome=document.getElementById('s-nome').value.trim();
+    const dur=parseInt(document.getElementById('s-dur').value);
+    const preco=parseFloat(document.getElementById('s-preco').value);
+    if(!nome||!dur||!preco){this.showToast('⚠️ Preencha todos os campos');return}
+    DB.saveServico({id:DB.uid(),negocioId:nId,nome,duracao:dur,preco});
+    document.getElementById('painel-content').innerHTML=this.renderServicos(nId);
+    this.showToast('✅ Serviço adicionado!');
+  },
+
+  deleteServico(id,nId){DB.deleteServico(id);document.getElementById('painel-content').innerHTML=this.renderServicos(nId);this.showToast('🗑️ Serviço removido')},
+
+  // PROFISSIONAIS
+  renderProfissionais(negocioId){
+    const profs=DB.getProfissionais(negocioId);
+    return`<div class="add-form">
+      <div class="add-form-title">➕ Novo profissional</div>
+      <div class="form-group"><input class="form-input no-icon" type="text" id="p-nome" placeholder="Nome do barbeiro"></div>
+      <button class="btn-primary" onclick="App.addProfissional('${negocioId}')">Adicionar profissional</button>
+    </div>
+    ${profs.length?profs.map(p=>`<div class="cfg-card"><div class="cfg-info"><div class="cfg-name">👤 ${p.nome}</div></div><button class="btn-danger" onclick="App.deleteProfissional('${p.id}','${negocioId}')">Remover</button></div>`).join(''):'<div class="empty-state"><div class="empty-icon">👤</div><div class="empty-text">Nenhum profissional cadastrado</div></div>'}`;
+  },
+
+  addProfissional(nId){
+    const nome=document.getElementById('p-nome').value.trim();
+    if(!nome){this.showToast('⚠️ Digite o nome');return}
+    DB.saveProfissional({id:DB.uid(),negocioId:nId,nome});
+    document.getElementById('painel-content').innerHTML=this.renderProfissionais(nId);
+    this.showToast('✅ Profissional adicionado!');
+  },
+
+  deleteProfissional(id,nId){DB.deleteProfissional(id);document.getElementById('painel-content').innerHTML=this.renderProfissionais(nId);this.showToast('🗑️ Removido')},
+
+  // HORÁRIOS
+  renderHorarios(negocioId){
+    const h=DB.getHorarios(negocioId)||{0:{on:false,inicio:'08:00',fim:'18:00'},1:{on:true,inicio:'08:00',fim:'18:00'},2:{on:true,inicio:'08:00',fim:'18:00'},3:{on:true,inicio:'08:00',fim:'18:00'},4:{on:true,inicio:'08:00',fim:'18:00'},5:{on:true,inicio:'08:00',fim:'18:00'},6:{on:true,inicio:'08:00',fim:'13:00'},bloqueados:[]};
+    const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+    const rows=dias.map((d,i)=>`
+      <div class="day-row">
+        <label class="day-toggle"><input type="checkbox" id="day-${i}" ${h[i].on?'checked':''} onchange="App.toggleDia(${i},'${negocioId}')"><span class="day-slider"></span></label>
+        <span class="day-name">${d}</span>
+        <div class="day-times" id="day-times-${i}" style="${h[i].on?'':'opacity:.3;pointer-events:none'}">
+          <input class="time-input" type="time" id="day-ini-${i}" value="${h[i].inicio}" onchange="App.salvarHorarios('${negocioId}')">
+          <span class="time-sep">até</span>
+          <input class="time-input" type="time" id="day-fim-${i}" value="${h[i].fim}" onchange="App.salvarHorarios('${negocioId}')">
+        </div>
+      </div>`).join('');
+
+    const bloqueados=h.bloqueados||[];
+    const bloqueiasHtml=bloqueados.length?bloqueados.map((d,i)=>`
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--white);border-radius:10px;margin-bottom:8px;box-shadow:var(--shadow);">
+        <span style="font-size:13px;font-weight:600;">📵 ${new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}</span>
+        <button class="btn-danger" onclick="App.desbloquearData(${i},'${negocioId}')">Remover</button>
+      </div>`).join(''):'<div style="font-size:13px;color:var(--muted);padding:8px 0;">Nenhuma data bloqueada</div>';
+
+    return`
+      <div class="add-form">
+        <div class="add-form-title">📅 Dias e horários de funcionamento</div>
+        ${rows}
+        <button class="btn-primary" style="margin-top:8px;" onclick="App.salvarHorarios('${negocioId}')">💾 Salvar horários</button>
+      </div>
+      <div class="add-form">
+        <div class="add-form-title">📵 Bloquear data específica</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Use para feriados, férias ou imprevistos</div>
+        <div class="form-group"><input class="form-input no-icon" type="date" id="bloquear-data" min="${new Date().toISOString().split('T')[0]}"></div>
+        <button class="btn-primary" onclick="App.bloquearData('${negocioId}')">Bloquear esta data</button>
+        <div class="section-divider"></div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Datas bloqueadas</div>
+        ${bloqueiasHtml}
+      </div>`;
+  },
+
+  toggleDia(i,nId){
+    const checked=document.getElementById('day-'+i).checked;
+    const times=document.getElementById('day-times-'+i);
+    times.style.opacity=checked?'1':'0.3';
+    times.style.pointerEvents=checked?'auto':'none';
+    this.salvarHorarios(nId);
+  },
+
+  salvarHorarios(nId){
+    const current=DB.getHorarios(nId)||{bloqueados:[]};
+    const bloqueados=current.bloqueados||[];
+    const h={bloqueados};
+    for(let i=0;i<7;i++){
+      h[i]={
+        on:document.getElementById('day-'+i)?document.getElementById('day-'+i).checked:(current[i]?current[i].on:false),
+        inicio:document.getElementById('day-ini-'+i)?document.getElementById('day-ini-'+i).value:(current[i]?current[i].inicio:'08:00'),
+        fim:document.getElementById('day-fim-'+i)?document.getElementById('day-fim-'+i).value:(current[i]?current[i].fim:'18:00'),
+      };
+    }
+    DB.saveHorarios(nId,h);
+    this.showToast('✅ Horários salvos!');
+  },
+
+  bloquearData(nId){
+    const data=document.getElementById('bloquear-data').value;
+    if(!data){this.showToast('⚠️ Selecione uma data');return}
+    const h=DB.getHorarios(nId)||{bloqueados:[]};
+    if(!h.bloqueados)h.bloqueados=[];
+    if(h.bloqueados.includes(data)){this.showToast('⚠️ Data já bloqueada');return}
+    h.bloqueados.push(data);
+    DB.saveHorarios(nId,h);
+    document.getElementById('painel-content').innerHTML=this.renderHorarios(nId);
+    this.showToast('📵 Data bloqueada!');
+  },
+
+  desbloquearData(idx,nId){
+    const h=DB.getHorarios(nId)||{bloqueados:[]};
+    h.bloqueados.splice(idx,1);
+    DB.saveHorarios(nId,h);
+    document.getElementById('painel-content').innerHTML=this.renderHorarios(nId);
+    this.showToast('✅ Data desbloqueada');
+  },
+
+  // CONFIG
+  renderConfig(negocio){
+    const logoPreview=negocio.logo?`<img src="${negocio.logo}">`:'<span style="font-size:24px">✂️</span>';
+    const capaPreview=negocio.capa?`<img src="${negocio.capa}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">`:'';
+    return`
+      <div class="add-form">
+        <div class="add-form-title">🏪 Nome da barbearia</div>
+        <div class="form-group"><input class="form-input no-icon" type="text" id="cfg-nome" value="${negocio.nome}" placeholder="Nome da barbearia"></div>
+        <button class="btn-primary" onclick="App.salvarNome('${negocio.id}')">Salvar nome</button>
+      </div>
+
+      <div class="add-form">
+        <div class="add-form-title">🖼️ Logo e capa</div>
+        <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:16px;">
+          <div>
+            <label class="form-label">Logo</label>
+            <label class="logo-box" title="Clique para trocar logo">
+              ${logoPreview}
+              <input type="file" accept="image/*" onchange="App.uploadLogo(event,'${negocio.id}')" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
+            </label>
+            <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:4px;">Clique para trocar</div>
+          </div>
+          <div style="flex:1;">
+            <label class="form-label">Foto de capa</label>
+            <label class="photo-box" title="Clique para trocar capa" style="height:80px;">
+              ${capaPreview}
+              <div class="photo-box-label" style="${negocio.capa?'display:none':''}">📷 Clique para adicionar capa</div>
+              <input type="file" accept="image/*" onchange="App.uploadCapa(event,'${negocio.id}')" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="add-form">
+        <div class="add-form-title">🔗 Seu link de agendamento</div>
+        <div style="background:var(--gray);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--muted);word-break:break-all;">
+          <strong style="color:var(--dark);">${location.origin}${location.pathname}#agendar/${negocio.slug}</strong>
+        </div>
+        <button class="btn-primary" onclick="App.copyLink('${negocio.slug}')" style="margin-top:10px;">📋 Copiar link</button>
+        <button onclick="App.showAgendarPage('${negocio.slug}')" style="width:100%;margin-top:8px;padding:12px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">👁️ Ver como cliente</button>
+      </div>`;
+  },
+
+  salvarNome(nId){
+    const nome=document.getElementById('cfg-nome').value.trim();
+    if(!nome){this.showToast('⚠️ Digite o nome');return}
+    const negocio=DB.getNegocioById(nId);
+    negocio.nome=nome;
+    DB.saveNegocio(negocio);
+    // atualizar título no header
+    document.querySelector('.painel-title').textContent=nome;
+    this.showToast('✅ Nome atualizado!');
+  },
+
+  uploadLogo(e,nId){
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const negocio=DB.getNegocioById(nId);
+      negocio.logo=ev.target.result;
+      DB.saveNegocio(negocio);
+      const session=DB.getSession();
+      this.showPainel(session);
+      // volta para aba config
+      setTimeout(()=>{const tabs=document.querySelectorAll('.tab');const configTab=tabs[tabs.length-1];this.switchTab('config',configTab)},100);
+      this.showToast('✅ Logo atualizado!');
+    };
+    reader.readAsDataURL(file);
+  },
+
+  uploadCapa(e,nId){
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const negocio=DB.getNegocioById(nId);
+      negocio.capa=ev.target.result;
+      DB.saveNegocio(negocio);
+      const session=DB.getSession();
+      this.showPainel(session);
+      setTimeout(()=>{const tabs=document.querySelectorAll('.tab');const configTab=tabs[tabs.length-1];this.switchTab('config',configTab)},100);
+      this.showToast('✅ Capa atualizada!');
+    };
+    reader.readAsDataURL(file);
+  },
+
+  logout(){DB.clearSession();this.navigate('login')},
+  copyLink(slug){const url=`${location.origin}${location.pathname}#agendar/${slug}`;navigator.clipboard.writeText(url).then(()=>this.showToast('🔗 Link copiado!'))},
+
+  // TELA AGENDAR
+  showAgendarPage(slug){
+    const negocio=DB.getNegocio(slug);
+    if(!negocio){
+      document.getElementById('app').innerHTML=`<div class="app-wrap" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;padding:40px;"><div style="font-size:48px;">🔍</div><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;text-align:center;">Barbearia não encontrada</div><button class="btn-secondary" onclick="App.navigate('')" style="width:200px;margin-top:8px;">← Voltar</button></div>`;
+      return;
+    }
+    this.currentNegocio=negocio;this.currentSlug=slug;
+    this.selectedServico=null;this.selectedProfissional=null;this.selectedData=null;this.selectedHora=null;
+    this.calMonth=new Date().getMonth();this.calYear=new Date().getFullYear();
+
+    const servicos=DB.getServicos(negocio.id);
+    const profs=DB.getProfissionais(negocio.id);
+    const capaStyle=negocio.capa?`background-image:url(${negocio.capa});background-size:cover;background-position:center;`:'background:linear-gradient(135deg,#1a1a1a,#2a2a2a);';
+    const logoHtml=negocio.logo?`<img src="${negocio.logo}">`:'✂️';
+
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div class="hero">
+        <div class="hero-cover" style="${capaStyle}"><div class="hero-cover-overlay"></div></div>
+        <div class="hero-body">
+          <div class="hero-row">
+            <div class="hero-logo">${logoHtml}</div>
+            <div>
+              <div class="hero-name">${negocio.nome}</div>
+              <div class="hero-sub">⭐ Agendamento online</div>
+            </div>
+          </div>
+          <div class="hero-stats">
+            <div class="hero-stat"><div class="stat-val">${servicos.length}</div><div class="stat-lbl">Serviços</div></div>
+            <div class="hero-stat"><div class="stat-val">${profs.length}</div><div class="stat-lbl">Profissionais</div></div>
+            <div class="hero-stat"><div class="stat-val">100%</div><div class="stat-lbl">Online</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="content">
+        <div class="section">
+          <div class="section-label">1. Escolha o serviço</div>
+          <div class="service-list">
+            ${servicos.map(s=>`<div class="service-card" onclick="App.selectServico('${s.id}')" data-id="${s.id}"><div class="service-left"><div class="service-icon">✂️</div><div><div class="service-name">${s.nome}</div><div class="service-dur">⏱ ${s.duracao} min</div></div></div><div class="service-right"><div class="service-price">R$${s.preco}</div><div class="check">✓</div></div></div>`).join('')||'<div style="color:var(--muted);font-size:13px;">Nenhum serviço cadastrado.</div>'}
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-label">2. Escolha o profissional</div>
+          <div class="barber-list">
+            ${profs.map(p=>`<div class="barber-card" onclick="App.selectProfissional('${p.id}')" data-id="${p.id}"><div class="barber-avatar">👤</div><div class="barber-name">${p.nome}</div></div>`).join('')}
+          </div>
+        </div>
+        <div class="section">
+          <div class="section-label">3. Escolha a data</div>
+          <div class="cal-wrap" id="cal-wrap"></div>
+        </div>
+        <div class="section" id="horarios-section" style="display:none;">
+          <div class="section-label">4. Escolha o horário</div>
+          <div class="time-grid" id="time-grid"></div>
+        </div>
+        <div class="section">
+          <div class="section-label">5. Seus dados</div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="cliente-nome" placeholder="Seu nome completo"></div></div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="cliente-tel" placeholder="WhatsApp com DDD"></div></div>
+        </div>
+        <div class="section">
+          <div class="summary-box">
+            <div class="summary-title">Resumo do agendamento</div>
+            <div class="summary-row"><span class="summary-lbl">Serviço</span><span class="summary-val" id="res-servico">—</span></div>
+            <div class="summary-row"><span class="summary-lbl">Profissional</span><span class="summary-val" id="res-prof">—</span></div>
+            <div class="summary-row"><span class="summary-lbl">Data</span><span class="summary-val" id="res-data">—</span></div>
+            <div class="summary-row"><span class="summary-lbl">Horário</span><span class="summary-val" id="res-hora">—</span></div>
+            <div class="summary-row"><span class="summary-lbl">Total</span><span class="summary-val gold" id="res-preco">—</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="sticky-btn"><button class="btn-primary" onclick="App.confirmarAgendamento()">✓ Confirmar Agendamento</button></div>
+      <div class="success-wrap" id="success-wrap">
+        <div class="success-icon">✅</div>
+        <div class="success-title">Agendado!</div>
+        <div class="success-sub">Seu horário foi reservado com sucesso.</div>
+        <div class="success-card" id="success-card"></div>
+        <button class="btn-secondary" onclick="App.resetAgendar()" style="width:100%;">← Fazer novo agendamento</button>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>`;
+    this.renderCalendar();
+  },
+
+  selectServico(id){
+    this.selectedServico=DB.getServicos(this.currentNegocio.id).find(s=>s.id===id);
+    document.querySelectorAll('.service-card').forEach(c=>c.classList.remove('selected'));
+    document.querySelector(`.service-card[data-id="${id}"]`).classList.add('selected');
+    document.getElementById('res-servico').textContent=this.selectedServico.nome;
+    document.getElementById('res-preco').textContent=`R$${this.selectedServico.preco}`;
+  },
+
+  selectProfissional(id){
+    this.selectedProfissional=DB.getProfissionais(this.currentNegocio.id).find(p=>p.id===id);
+    document.querySelectorAll('.barber-card').forEach(c=>c.classList.remove('selected'));
+    document.querySelector(`.barber-card[data-id="${id}"]`).classList.add('selected');
+    document.getElementById('res-prof').textContent=this.selectedProfissional.nome;
+    this.refreshHorarios();
+  },
+
+  // CALENDAR
+  gerarSlots(inicio,fim,duracao){
+    const slots=[];
+    const [hI,mI]=inicio.split(':').map(Number);
+    const [hF,mF]=fim.split(':').map(Number);
+    let cur=hI*60+mI;
+    const end=hF*60+mF;
+    while(cur+duracao<=end){
+      slots.push(`${String(Math.floor(cur/60)).padStart(2,'0')}:${String(cur%60).padStart(2,'0')}`);
+      cur+=duracao||30;
+    }
+    return slots;
+  },
+
+  renderCalendar(){
+    const wrap=document.getElementById('cal-wrap');if(!wrap)return;
+    const h=DB.getHorarios(this.currentNegocio.id)||{0:{on:false},1:{on:true},2:{on:true},3:{on:true},4:{on:true},5:{on:true},6:{on:true},bloqueados:[]};
+    const bloqueados=h.bloqueados||[];
+    const now=new Date();
+    const year=this.calYear,month=this.calMonth;
+    const mNames=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const firstDay=new Date(year,month,1).getDay();
+    const daysInMonth=new Date(year,month+1,0).getDate();
+    const todayStr=now.toISOString().split('T')[0];
+    const labels=['D','S','T','Q','Q','S','S'];
+    let days=labels.map(l=>`<div class="cal-daylbl">${l}</div>`).join('');
+    for(let i=0;i<firstDay;i++)days+=`<div class="cal-day empty"></div>`;
+    for(let d=1;d<=daysInMonth;d++){
+      const ds=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const isPast=ds<todayStr;
+      const dow=new Date(ds+'T12:00:00').getDay();
+      const isBloqueado=bloqueados.includes(ds);
+      const isDiaOff=!h[dow]||!h[dow].on;
+      const disabled=isPast||isBloqueado||isDiaOff;
+      const isSelected=ds===this.selectedData;
+      const isToday=ds===todayStr;
+      const cls=disabled?(isBloqueado?'blocked':'disabled'):isSelected?'selected':isToday?'today':'';
+      days+=`<button class="cal-day ${cls}" ${disabled?'disabled':`onclick="App.selectData('${ds}')"`}>${d}</button>`;
+    }
+    wrap.innerHTML=`
+      <div class="cal-head">
+        <button class="cal-nav" onclick="App.prevMonth()">‹</button>
+        <div class="cal-month">${mNames[month]} ${year}</div>
+        <button class="cal-nav" onclick="App.nextMonth()">›</button>
+      </div>
+      <div class="cal-grid">${days}</div>`;
+  },
+
+  prevMonth(){
+    if(this.calMonth===0){this.calMonth=11;this.calYear--}else this.calMonth--;
+    const now=new Date();
+    if(this.calYear<now.getFullYear()||(this.calYear===now.getFullYear()&&this.calMonth<now.getMonth())){this.calMonth=now.getMonth();this.calYear=now.getFullYear()}
+    this.renderCalendar();
+  },
+
+  nextMonth(){
+    if(this.calMonth===11){this.calMonth=0;this.calYear++}else this.calMonth++;
+    this.renderCalendar();
+  },
+
+  selectData(ds){
+    this.selectedData=ds;this.selectedHora=null;
+    this.renderCalendar();
+    const d=new Date(ds+'T12:00:00');
+    document.getElementById('res-data').textContent=d.toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'});
+    document.getElementById('res-hora').textContent='—';
+    this.refreshHorarios();
+  },
+
+  refreshHorarios(){
+    if(!this.selectedData||!this.selectedProfissional)return;
+    const section=document.getElementById('horarios-section');
+    const grid=document.getElementById('time-grid');
+    if(!section||!grid)return;
+    section.style.display='block';
+    const h=DB.getHorarios(this.currentNegocio.id)||{};
+    const dow=new Date(this.selectedData+'T12:00:00').getDay();
+    const dayConfig=h[dow]||{on:true,inicio:'08:00',fim:'18:00'};
+    const duracao=this.selectedServico?this.selectedServico.duracao:30;
+    const slots=this.gerarSlots(dayConfig.inicio,dayConfig.fim,duracao);
+    const ocupados=DB.getHorariosOcupados(this.currentNegocio.id,this.selectedProfissional.id,this.selectedData);
+    grid.innerHTML=slots.map(hora=>{
+      const busy=ocupados.includes(hora);
+      const sel=hora===this.selectedHora;
+      return`<div class="time-slot ${busy?'busy':sel?'selected':''}" ${!busy?`onclick="App.selectHora('${hora}')"`:''}>${hora}</div>`;
+    }).join('');
+    if(!slots.length)grid.innerHTML='<div style="grid-column:span 4;font-size:13px;color:var(--muted);padding:8px;">Sem horários disponíveis neste dia.</div>';
+  },
+
+  selectHora(hora){
+    this.selectedHora=hora;this.refreshHorarios();
+    document.getElementById('res-hora').textContent=hora;
+  },
+
+  gerarCodigo(){
+    const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code='';for(let i=0;i<6;i++)code+=chars[Math.floor(Math.random()*chars.length)];
+    return code;
+  },
+
+  confirmarAgendamento(){
+    const nome=document.getElementById('cliente-nome').value.trim();
+    const tel=document.getElementById('cliente-tel').value.trim();
+    if(!this.selectedServico){this.showToast('⚠️ Escolha um serviço');return}
+    if(!this.selectedProfissional){this.showToast('⚠️ Escolha um profissional');return}
+    if(!this.selectedData){this.showToast('⚠️ Escolha uma data');return}
+    if(!this.selectedHora){this.showToast('⚠️ Escolha um horário');return}
+    if(!nome){document.getElementById('cliente-nome').classList.add('error');this.showToast('⚠️ Digite seu nome');return}
+    if(!tel){document.getElementById('cliente-tel').classList.add('error');this.showToast('⚠️ Digite seu WhatsApp');return}
+    const codigo=this.gerarCodigo();
+    const ag={id:DB.uid(),negocioId:this.currentNegocio.id,clienteNome:nome,clienteTel:tel,servicoId:this.selectedServico.id,profissionalId:this.selectedProfissional.id,data:this.selectedData,hora:this.selectedHora,status:'pendente',codigo,criadoEm:new Date().toISOString()};
+    DB.saveAgendamento(ag);
+    const d=new Date(this.selectedData+'T12:00:00');
+    const fmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+    const cancelUrl=`${location.origin}${location.pathname}#cancelar/${codigo}`;
+    document.getElementById('success-card').innerHTML=`
+      <div class="success-row"><span class="s-icon">✂️</span><div><div class="s-lbl">Serviço</div><div class="s-val">${this.selectedServico.nome}</div></div></div>
+      <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Profissional</div><div class="s-val">${this.selectedProfissional.nome}</div></div></div>
+      <div class="success-row"><span class="s-icon">📅</span><div><div class="s-lbl">Data e hora</div><div class="s-val">${fmt} às ${this.selectedHora}</div></div></div>
+      <div class="success-row"><span class="s-icon">💰</span><div><div class="s-lbl">Total</div><div class="s-val">R$${this.selectedServico.preco}</div></div></div>
+      <div style="margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#065f46;margin-bottom:6px;">🔑 Seu código de cancelamento</div>
+        <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#064e3b;letter-spacing:6px;text-align:center;padding:8px 0;">${codigo}</div>
+        <div style="font-size:11px;color:#065f46;text-align:center;margin-top:4px;">Guarde este código para cancelar se precisar</div>
+      </div>
+      <button onclick="App.navigate('cancelar/${codigo}')" style="width:100%;margin-top:12px;padding:12px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);">Precisa cancelar? Clique aqui</button>`;
+    document.getElementById('success-wrap').classList.add('show');
+  },
+
+  // TELA CANCELAMENTO CLIENTE
+  showCancelarPage(codigo){
+    const all=JSON.parse(localStorage.getItem('agendamentos')||'[]');
+    const ag=all.find(a=>a.codigo===codigo);
+    document.getElementById('app').innerHTML=`<div class="app-wrap" style="min-height:100vh;display:flex;flex-direction:column;">
+      <div style="background:var(--dark);padding:48px 24px 28px;text-align:center;">
+        <div style="font-size:36px;margin-bottom:8px;">🗓️</div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:white;">Cancelar Agendamento</div>
+      </div>
+      <div style="padding:28px 24px;flex:1;" id="cancelar-body">
+        ${this.renderCancelarBody(ag,codigo)}
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>`;
+  },
+
+  renderCancelarBody(ag,codigo){
+    if(!ag){
+      return`<div style="text-align:center;padding:40px 0;">
+        <div style="font-size:48px;margin-bottom:16px;">🔍</div>
+        <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:8px;">Código não encontrado</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">Verifique o código e tente novamente.</div>
+        <div style="margin-bottom:16px;">
+          <input class="form-input no-icon" type="text" id="codigo-input" placeholder="Digite seu código (ex: AB3C9D)" style="text-align:center;font-size:18px;letter-spacing:4px;text-transform:uppercase;">
+        </div>
+        <button class="btn-primary" onclick="App.buscarCodigo()">Buscar agendamento</button>
+      </div>`;
+    }
+    if(ag.status==='cancelado'){
+      return`<div style="text-align:center;padding:40px 0;">
+        <div style="font-size:48px;margin-bottom:16px;">❌</div>
+        <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:8px;">Já cancelado</div>
+        <div style="font-size:13px;color:var(--muted);">Este agendamento já foi cancelado.</div>
+      </div>`;
+    }
+    const negocio=DB.getNegocioById(ag.negocioId);
+    const servicos=DB.getServicos(ag.negocioId);
+    const profs=DB.getProfissionais(ag.negocioId);
+    const s=servicos.find(x=>x.id===ag.servicoId);
+    const p=profs.find(x=>x.id===ag.profissionalId);
+    const d=new Date(ag.data+'T12:00:00');
+    const fmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+    const isPast=ag.data<new Date().toISOString().split('T')[0];
+    return`
+      <div style="background:var(--white);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:20px;">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:14px;">📋 Detalhes do agendamento</div>
+        <div class="success-row"><span class="s-icon">🏪</span><div><div class="s-lbl">Barbearia</div><div class="s-val">${negocio?negocio.nome:'-'}</div></div></div>
+        <div class="success-row"><span class="s-icon">✂️</span><div><div class="s-lbl">Serviço</div><div class="s-val">${s?s.nome:'-'}</div></div></div>
+        <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Profissional</div><div class="s-val">${p?p.nome:'-'}</div></div></div>
+        <div class="success-row"><span class="s-icon">📅</span><div><div class="s-lbl">Data e hora</div><div class="s-val">${fmt} às ${ag.hora}</div></div></div>
+        <div class="success-row"><span class="s-icon">🔖</span><div><div class="s-lbl">Status</div><div class="s-val" style="color:${ag.status==='confirmado'?'var(--green)':'#92400e'}">${ag.status==='confirmado'?'✅ Confirmado':'⏳ Pendente'}</div></div></div>
+      </div>
+      ${isPast
+        ?`<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:14px;text-align:center;font-size:13px;color:#92400e;">Este agendamento já passou e não pode ser cancelado.</div>`
+        :`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:16px;">
+            <div style="font-size:13px;color:#991b1b;font-weight:600;margin-bottom:4px;">⚠️ Atenção</div>
+            <div style="font-size:12px;color:#b91c1c;line-height:1.5;">Ao cancelar, o horário ficará disponível para outros clientes. Esta ação não pode ser desfeita.</div>
+          </div>
+          <button class="btn-primary" style="background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 20px rgba(239,68,68,.3);" onclick="App.clienteCancelar('${ag.id}','${codigo}')">❌ Cancelar meu agendamento</button>
+          <button onclick="App.navigate('agendar/${negocio?negocio.slug:''}')" style="width:100%;margin-top:10px;padding:13px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">← Voltar</button>`
+      }`;
+  },
+
+  buscarCodigo(){
+    const codigo=document.getElementById('codigo-input').value.trim().toUpperCase();
+    if(!codigo){this.showToast('⚠️ Digite o código');return}
+    this.navigate('cancelar/'+codigo);
+  },
+
+  clienteCancelar(agId,codigo){
+    DB.updateStatus(agId,'cancelado');
+    document.getElementById('cancelar-body').innerHTML=`
+      <div style="text-align:center;padding:40px 0;">
+        <div style="font-size:56px;margin-bottom:16px;">✅</div>
+        <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;margin-bottom:10px;">Cancelado com sucesso</div>
+        <div style="font-size:14px;color:var(--muted);line-height:1.6;">Seu agendamento foi cancelado.<br>O horário já está disponível para outros clientes.</div>
+      </div>`;
+    this.showToast('✅ Agendamento cancelado!');
+  },
+
+  resetAgendar(){
+    this.selectedServico=null;this.selectedProfissional=null;this.selectedData=null;this.selectedHora=null;
+    document.getElementById('success-wrap').classList.remove('show');
+    document.querySelectorAll('.service-card').forEach(c=>c.classList.remove('selected'));
+    document.querySelectorAll('.barber-card').forEach(c=>c.classList.remove('selected'));
+    document.getElementById('cliente-nome').value='';
+    document.getElementById('cliente-tel').value='';
+    document.getElementById('res-servico').textContent='—';
+    document.getElementById('res-prof').textContent='—';
+    document.getElementById('res-data').textContent='—';
+    document.getElementById('res-hora').textContent='—';
+    document.getElementById('res-preco').textContent='—';
+    document.getElementById('horarios-section').style.display='none';
+    this.renderCalendar();
+    window.scrollTo({top:0,behavior:'smooth'});
+  },
+
+  showToast(msg){
+    const t=document.getElementById('toast');if(!t)return;
+    t.textContent=msg;t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),2500);
+  },
+};
+
+window.addEventListener('hashchange',()=>App.init());
+window.addEventListener('DOMContentLoaded',()=>App.init());
+</script>
+</body>
+</html>
