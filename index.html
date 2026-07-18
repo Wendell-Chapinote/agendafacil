@@ -254,6 +254,25 @@ const DB = {
     localStorage.setItem('horarios_'+negocioId,JSON.stringify(defaultH));
     return{userId,negocioId};
   },
+  // CLIENTES (conta global)
+  getClientes(){return JSON.parse(localStorage.getItem('clientes')||'[]')},
+  getClienteByEmail(email){return this.getClientes().find(c=>c.email===email)||null},
+  getClienteById(id){return this.getClientes().find(c=>c.id===id)||null},
+  loginCliente(email,senha){return this.getClientes().find(c=>c.email===email&&c.senha===senha)||null},
+  registerCliente(nome,email,tel,senha){
+    const all=this.getClientes();
+    if(all.find(c=>c.email===email))return{error:'E-mail já cadastrado'};
+    const cliente={id:'c_'+Date.now(),nome,email,tel,senha,criadoEm:new Date().toISOString()};
+    all.push(cliente);localStorage.setItem('clientes',JSON.stringify(all));
+    return{cliente};
+  },
+  getClienteSession(){return JSON.parse(sessionStorage.getItem('cliente_session')||'null')},
+  setClienteSession(c){sessionStorage.setItem('cliente_session',JSON.stringify(c))},
+  clearClienteSession(){sessionStorage.removeItem('cliente_session')},
+  isClienteBloqueadoPorId(nId,clienteId){return(JSON.parse(localStorage.getItem('bloqueados_'+nId)||'[]')).some(c=>c.clienteId===clienteId)},
+  getClientesBloqueados(nId){return JSON.parse(localStorage.getItem('bloqueados_'+nId)||'[]')},
+  saveClientesBloqueados(nId,lista){localStorage.setItem('bloqueados_'+nId,JSON.stringify(lista))},
+  isClienteBloqueado(nId,tel){return(JSON.parse(localStorage.getItem('bloqueados_'+nId)||'[]')).some(c=>c.tel===tel)},
   getSession(){return JSON.parse(sessionStorage.getItem('session')||'null')},
   setSession(u){sessionStorage.setItem('session',JSON.stringify(u))},
   clearSession(){sessionStorage.removeItem('session')},
@@ -412,9 +431,11 @@ const App = {
       </div>
       <div class="tabs">
         <div class="tab active" onclick="App.switchTab('agenda',this)">📅 Agenda</div>
+        <div class="tab" onclick="App.switchTab('historico',this)">🔍 Histórico</div>
         <div class="tab" onclick="App.switchTab('servicos',this)">✂️ Serviços</div>
         <div class="tab" onclick="App.switchTab('profissionais',this)">👤 Equipe</div>
         <div class="tab" onclick="App.switchTab('horarios',this)">🕐 Horários</div>
+        <div class="tab" onclick="App.switchTab('bloqueados',this)">🚫 Bloqueios</div>
         <div class="tab" onclick="App.switchTab('config',this)">⚙️ Config</div>
       </div>
       <div class="painel-content" id="painel-content">${this.renderAgenda(negocio.id)}</div>
@@ -429,9 +450,11 @@ const App = {
     const negocio=DB.getNegocioById(session.negocioId);
     const c=document.getElementById('painel-content');
     if(tab==='agenda')c.innerHTML=this.renderAgenda(negocio.id);
+    else if(tab==='historico')c.innerHTML=this.renderHistorico(negocio.id);
     else if(tab==='servicos')c.innerHTML=this.renderServicos(negocio.id);
     else if(tab==='profissionais')c.innerHTML=this.renderProfissionais(negocio.id);
     else if(tab==='horarios')c.innerHTML=this.renderHorarios(negocio.id);
+    else if(tab==='bloqueados')c.innerHTML=this.renderBloqueados(negocio.id);
     else if(tab==='config')c.innerHTML=this.renderConfig(negocio);
   },
 
@@ -446,8 +469,12 @@ const App = {
       const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'});
       const actions=ag.status==='pendente'?`
         <button class="btn-sm btn-confirm-ag" onclick="App.updateAg('${ag.id}','confirmado')">✓ Confirmar</button>
-        <button class="btn-sm btn-cancel-ag" onclick="App.updateAg('${ag.id}','cancelado')">✕ Cancelar</button>`
-      :ag.status==='confirmado'?`<button class="btn-sm btn-cancel-ag" onclick="App.updateAg('${ag.id}','cancelado')">✕ Cancelar agendamento</button>`:'';
+        <button class="btn-sm btn-cancel-ag" onclick="App.updateAg('${ag.id}','cancelado')">✕ Cancelar</button>
+        <button class="btn-sm" style="background:transparent;border:1px solid #aaa;color:#888;margin-top:4px;" onclick="App.bloquearClienteDeAg('${ag.id}','${negocioId}')">🚫 Bloquear</button>`
+      :ag.status==='confirmado'?`
+        <button class="btn-sm btn-cancel-ag" onclick="App.updateAg('${ag.id}','cancelado')">✕ Cancelar</button>
+        <button class="btn-sm" style="background:transparent;border:1px solid #aaa;color:#888;" onclick="App.bloquearClienteDeAg('${ag.id}','${negocioId}')">🚫 Bloquear</button>`
+      :'';
       return`<div class="ag-card ${ag.status}">
         <div class="ag-head"><div class="ag-nome">${ag.clienteNome}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
         <div class="ag-info">
@@ -466,6 +493,123 @@ const App = {
     const n=DB.getNegocioById(DB.getSession().negocioId);
     document.getElementById('painel-content').innerHTML=this.renderAgenda(n.id);
     this.showToast(status==='confirmado'?'✅ Confirmado!':(status==='cancelado'?'❌ Cancelado':''));
+  },
+
+  bloquearClienteDeAg(agId,nId){
+    const all=JSON.parse(localStorage.getItem('agendamentos')||'[]');
+    const ag=all.find(a=>a.id===agId);
+    if(!ag)return;
+    const lista=DB.getClientesBloqueados(nId);
+    if(lista.some(c=>c.clienteId===ag.clienteId)){this.showToast('⚠️ Cliente já bloqueado');return}
+    lista.push({clienteId:ag.clienteId,nome:ag.clienteNome,tel:ag.clienteTel,email:ag.clienteEmail||'',bloqueadoEm:new Date().toISOString()});
+    DB.saveClientesBloqueados(nId,lista);
+    DB.updateStatus(agId,'cancelado');
+    document.getElementById('painel-content').innerHTML=this.renderAgenda(nId);
+    this.showToast('🚫 Cliente bloqueado e agendamento cancelado');
+  },
+
+  // HISTÓRICO
+  renderHistorico(negocioId){
+    return`<div class="add-form">
+      <div class="add-form-title">🔍 Buscar agendamentos</div>
+      <div class="form-group">
+        <input class="form-input no-icon" type="text" id="h-nome" placeholder="Nome do cliente" oninput="App.filtrarHistorico('${negocioId}')">
+      </div>
+      <div class="form-row" style="margin-bottom:0;">
+        <div>
+          <label class="form-label">De</label>
+          <input class="form-input no-icon" type="date" id="h-de" oninput="App.filtrarHistorico('${negocioId}')">
+        </div>
+        <div>
+          <label class="form-label">Até</label>
+          <input class="form-input no-icon" type="date" id="h-ate" oninput="App.filtrarHistorico('${negocioId}')">
+        </div>
+      </div>
+    </div>
+    <div id="historico-result">${this.renderHistoricoResult(negocioId,'','','')}</div>`;
+  },
+
+  filtrarHistorico(negocioId){
+    const nome=(document.getElementById('h-nome')||{value:''}).value.trim().toLowerCase();
+    const de=(document.getElementById('h-de')||{value:''}).value;
+    const ate=(document.getElementById('h-ate')||{value:''}).value;
+    document.getElementById('historico-result').innerHTML=this.renderHistoricoResult(negocioId,nome,de,ate);
+  },
+
+  renderHistoricoResult(negocioId,nome,de,ate){
+    const servicos=DB.getServicos(negocioId);
+    const profs=DB.getProfissionais(negocioId);
+    let ags=DB.getAgendamentos(negocioId).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
+    if(nome)ags=ags.filter(a=>a.clienteNome.toLowerCase().includes(nome));
+    if(de)ags=ags.filter(a=>a.data>=de);
+    if(ate)ags=ags.filter(a=>a.data<=ate);
+    if(!ags.length)return`<div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">Nenhum agendamento encontrado</div></div>`;
+    return ags.map(ag=>{
+      const s=servicos.find(x=>x.id===ag.servicoId);
+      const p=profs.find(x=>x.id===ag.profissionalId);
+      const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      const statusColor=ag.status==='confirmado'?'var(--green)':ag.status==='cancelado'?'#ccc':'#92400e';
+      return`<div class="ag-card ${ag.status}">
+        <div class="ag-head"><div class="ag-nome">${ag.clienteNome}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
+        <div class="ag-info">
+          <span>📱 ${ag.clienteTel}</span>
+          <span>✂️ ${s?s.nome:'-'} · R$${s?s.preco:'-'}</span>
+          <span>👤 ${p?p.nome:'-'}</span>
+          <span>📅 ${df} às ${ag.hora}</span>
+        </div>
+      </div>`;
+    }).join('');
+  },
+
+  // BLOQUEADOS
+  renderBloqueados(negocioId){
+    const lista=DB.getClientesBloqueados(negocioId);
+    return`<div class="add-form">
+      <div class="add-form-title">🚫 Bloquear cliente por e-mail</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Clientes bloqueados não conseguem agendar nesta barbearia. Use o e-mail cadastrado do cliente.</div>
+      <div class="form-group">
+        <label class="form-label">E-mail do cliente</label>
+        <input class="form-input no-icon" type="email" id="bl-nome" placeholder="email@exemplo.com">
+      </div>
+      <div id="bl-erro" style="color:var(--red);font-size:12px;margin-bottom:8px;"></div>
+      <button class="btn-primary" style="background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 20px rgba(239,68,68,.3);" onclick="App.adicionarBloqueio('${negocioId}')">🚫 Bloquear cliente</button>
+    </div>
+    ${lista.length?`
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">${lista.length} cliente(s) bloqueado(s)</div>
+      ${lista.map((c,i)=>`
+        <div class="cfg-card" style="border-left:4px solid var(--red);">
+          <div class="cfg-info">
+            <div class="cfg-name">🚫 ${c.nome}</div>
+            <div class="cfg-detail">📱 ${c.tel||'-'} · ✉️ ${c.email||'-'}</div>
+          </div>
+          <button class="btn-sm" style="background:var(--green);color:white;" onclick="App.desbloquearCliente(${i},'${negocioId}')">Desbloquear</button>
+        </div>`).join('')}`
+    :`<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">Nenhum cliente bloqueado</div></div>`}`;
+  },
+
+  adicionarBloqueio(nId){
+    const emailOuTel=document.getElementById('bl-nome').value.trim();
+    const errEl=document.getElementById('bl-erro');
+    if(!emailOuTel){this.showToast('⚠️ Digite o e-mail do cliente');return}
+    const cliente=DB.getClienteByEmail(emailOuTel);
+    if(!cliente){
+      if(errEl)errEl.textContent='Cliente não encontrado com este e-mail.';
+      this.showToast('⚠️ Cliente não encontrado');return;
+    }
+    const lista=DB.getClientesBloqueados(nId);
+    if(lista.some(c=>c.clienteId===cliente.id)){this.showToast('⚠️ Cliente já bloqueado');return}
+    lista.push({clienteId:cliente.id,nome:cliente.nome,tel:cliente.tel,email:cliente.email,bloqueadoEm:new Date().toISOString()});
+    DB.saveClientesBloqueados(nId,lista);
+    document.getElementById('painel-content').innerHTML=this.renderBloqueados(nId);
+    this.showToast('🚫 Cliente bloqueado!');
+  },
+
+  desbloquearCliente(idx,nId){
+    const lista=DB.getClientesBloqueados(nId);
+    lista.splice(idx,1);
+    DB.saveClientesBloqueados(nId,lista);
+    document.getElementById('painel-content').innerHTML=this.renderBloqueados(nId);
+    this.showToast('✅ Cliente desbloqueado!');
   },
 
   // SERVIÇOS
@@ -686,6 +830,93 @@ const App = {
   logout(){DB.clearSession();this.navigate('login')},
   copyLink(slug){const url=`${location.origin}${location.pathname}#agendar/${slug}`;navigator.clipboard.writeText(url).then(()=>this.showToast('🔗 Link copiado!'))},
 
+  // AUTH CLIENTE
+  showClienteLogin(slug){
+    const negocio=DB.getNegocio(slug);
+    if(!negocio)return;
+    const capaStyle=negocio.capa?`background-image:url(${negocio.capa});background-size:cover;background-position:center;`:'background:linear-gradient(135deg,#1a1a1a,#2a2a2a);';
+    const logoHtml=negocio.logo?`<img src="${negocio.logo}">`:'✂️';
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div class="hero">
+        <div class="hero-cover" style="${capaStyle}"><div class="hero-cover-overlay"></div></div>
+        <div class="hero-body">
+          <div class="hero-row">
+            <div class="hero-logo">${logoHtml}</div>
+            <div><div class="hero-name">${negocio.nome}</div><div class="hero-sub">⭐ Agendamento online</div></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:28px 24px 40px;">
+        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:6px;">Entre para agendar</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">Faça login ou crie sua conta gratuitamente</div>
+        <div id="cli-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-email" placeholder="Seu e-mail"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-senha" placeholder="Senha"></div></div>
+        <button class="btn-primary" onclick="App.doClienteLogin('${slug}')">Entrar e agendar</button>
+        <div style="text-align:center;margin:16px 0;font-size:12px;color:var(--muted);">— ou —</div>
+        <button onclick="App.showClienteRegister('${slug}')" style="width:100%;padding:14px;background:transparent;border:2px solid var(--border);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">Criar conta grátis</button>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>`;
+  },
+
+  showClienteRegister(slug){
+    const negocio=DB.getNegocio(slug);
+    if(!negocio)return;
+    const logoHtml=negocio.logo?`<img src="${negocio.logo}">`:'✂️';
+    const capaStyle=negocio.capa?`background-image:url(${negocio.capa});background-size:cover;background-position:center;`:'background:linear-gradient(135deg,#1a1a1a,#2a2a2a);';
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div class="hero">
+        <div class="hero-cover" style="${capaStyle}"><div class="hero-cover-overlay"></div></div>
+        <div class="hero-body">
+          <div class="hero-row">
+            <div class="hero-logo">${logoHtml}</div>
+            <div><div class="hero-name">${negocio.nome}</div><div class="hero-sub">⭐ Agendamento online</div></div>
+          </div>
+        </div>
+      </div>
+      <div style="padding:28px 24px 40px;">
+        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:6px;">Criar conta</div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">Preencha seus dados para continuar</div>
+        <div id="cli-reg-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="cli-nome" placeholder="Nome completo"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="cli-tel" placeholder="WhatsApp com DDD"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-email" placeholder="E-mail"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-senha" placeholder="Crie uma senha (mín. 6 caracteres)"></div></div>
+        <button class="btn-primary" onclick="App.doClienteRegister('${slug}')">Criar conta e agendar</button>
+        <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--muted);">Já tem conta? <a onclick="App.showClienteLogin('${slug}')" style="color:var(--dark);font-weight:700;cursor:pointer;text-decoration:underline;">Entrar</a></div>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>`;
+  },
+
+  doClienteLogin(slug){
+    const email=document.getElementById('cli-email').value.trim();
+    const senha=document.getElementById('cli-senha').value;
+    const errEl=document.getElementById('cli-error');
+    if(!email||!senha){errEl.textContent='Preencha e-mail e senha.';errEl.style.display='block';return}
+    const cliente=DB.loginCliente(email,senha);
+    if(!cliente){errEl.textContent='E-mail ou senha incorretos.';errEl.style.display='block';return}
+    DB.setClienteSession(cliente);
+    this.showAgendarPage(slug);
+  },
+
+  doClienteRegister(slug){
+    const nome=document.getElementById('cli-nome').value.trim();
+    const tel=document.getElementById('cli-tel').value.trim();
+    const email=document.getElementById('cli-email').value.trim();
+    const senha=document.getElementById('cli-senha').value;
+    const errEl=document.getElementById('cli-reg-error');
+    if(!nome||!tel||!email||!senha){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
+    if(senha.length<6){errEl.textContent='Senha deve ter pelo menos 6 caracteres.';errEl.style.display='block';return}
+    const result=DB.registerCliente(nome,email,tel,senha);
+    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
+    DB.setClienteSession(result.cliente);
+    this.showAgendarPage(slug);
+  },
+
   // TELA AGENDAR
   showAgendarPage(slug){
     const negocio=DB.getNegocio(slug);
@@ -693,6 +924,21 @@ const App = {
       document.getElementById('app').innerHTML=`<div class="app-wrap" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;padding:40px;"><div style="font-size:48px;">🔍</div><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;text-align:center;">Barbearia não encontrada</div><button class="btn-secondary" onclick="App.navigate('')" style="width:200px;margin-top:8px;">← Voltar</button></div>`;
       return;
     }
+
+    // checar se cliente está logado
+    const clienteSession=DB.getClienteSession();
+    if(!clienteSession){this.showClienteLogin(slug);return}
+
+    // checar se cliente está bloqueado
+    if(DB.isClienteBloqueadoPorId(negocio.id,clienteSession.id)){
+      document.getElementById('app').innerHTML=`<div class="app-wrap" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;padding:40px;text-align:center;">
+        <div style="font-size:52px;">🚫</div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;">Acesso bloqueado</div>
+        <div style="font-size:13px;color:var(--muted);">Sua conta foi bloqueada nesta barbearia.<br>Entre em contato para mais informações.</div>
+      </div>`;
+      return;
+    }
+
     this.currentNegocio=negocio;this.currentSlug=slug;
     this.selectedServico=null;this.selectedProfissional=null;this.selectedData=null;this.selectedHora=null;
     this.calMonth=new Date().getMonth();this.calYear=new Date().getFullYear();
@@ -714,7 +960,11 @@ const App = {
               <div class="hero-sub">⭐ Agendamento online</div>
             </div>
           </div>
-          <div class="hero-stats">
+          <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1;">
+            <div style="font-size:12px;color:rgba(255,255,255,0.6);">👤 ${clienteSession.nome}</div>
+            <button onclick="DB.clearClienteSession();App.showClienteLogin('${slug}')" style="font-size:11px;color:var(--gold);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;">Sair da conta</button>
+          </div>
+          <div class="hero-stats" style="margin-top:12px;">
             <div class="hero-stat"><div class="stat-val">${servicos.length}</div><div class="stat-lbl">Serviços</div></div>
             <div class="hero-stat"><div class="stat-val">${profs.length}</div><div class="stat-lbl">Profissionais</div></div>
             <div class="hero-stat"><div class="stat-val">100%</div><div class="stat-lbl">Online</div></div>
@@ -743,13 +993,9 @@ const App = {
           <div class="time-grid" id="time-grid"></div>
         </div>
         <div class="section">
-          <div class="section-label">5. Seus dados</div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="cliente-nome" placeholder="Seu nome completo"></div></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="cliente-tel" placeholder="WhatsApp com DDD"></div></div>
-        </div>
-        <div class="section">
           <div class="summary-box">
             <div class="summary-title">Resumo do agendamento</div>
+            <div class="summary-row"><span class="summary-lbl">Cliente</span><span class="summary-val">${clienteSession.nome}</span></div>
             <div class="summary-row"><span class="summary-lbl">Serviço</span><span class="summary-val" id="res-servico">—</span></div>
             <div class="summary-row"><span class="summary-lbl">Profissional</span><span class="summary-val" id="res-prof">—</span></div>
             <div class="summary-row"><span class="summary-lbl">Data</span><span class="summary-val" id="res-data">—</span></div>
@@ -888,27 +1134,28 @@ const App = {
   },
 
   confirmarAgendamento(){
-    const nome=document.getElementById('cliente-nome').value.trim();
-    const tel=document.getElementById('cliente-tel').value.trim();
+    const clienteSession=DB.getClienteSession();
+    if(!clienteSession){this.showToast('⚠️ Faça login para agendar');return}
     if(!this.selectedServico){this.showToast('⚠️ Escolha um serviço');return}
     if(!this.selectedProfissional){this.showToast('⚠️ Escolha um profissional');return}
     if(!this.selectedData){this.showToast('⚠️ Escolha uma data');return}
     if(!this.selectedHora){this.showToast('⚠️ Escolha um horário');return}
-    if(!nome){document.getElementById('cliente-nome').classList.add('error');this.showToast('⚠️ Digite seu nome');return}
-    if(!tel){document.getElementById('cliente-tel').classList.add('error');this.showToast('⚠️ Digite seu WhatsApp');return}
+    if(DB.isClienteBloqueadoPorId(this.currentNegocio.id,clienteSession.id)){
+      this.showToast('❌ Sua conta está bloqueada nesta barbearia');return;
+    }
     const codigo=this.gerarCodigo();
-    const ag={id:DB.uid(),negocioId:this.currentNegocio.id,clienteNome:nome,clienteTel:tel,servicoId:this.selectedServico.id,profissionalId:this.selectedProfissional.id,data:this.selectedData,hora:this.selectedHora,status:'pendente',codigo,criadoEm:new Date().toISOString()};
+    const ag={id:DB.uid(),negocioId:this.currentNegocio.id,clienteId:clienteSession.id,clienteNome:clienteSession.nome,clienteTel:clienteSession.tel,clienteEmail:clienteSession.email,servicoId:this.selectedServico.id,profissionalId:this.selectedProfissional.id,data:this.selectedData,hora:this.selectedHora,status:'pendente',codigo,criadoEm:new Date().toISOString()};
     DB.saveAgendamento(ag);
     const d=new Date(this.selectedData+'T12:00:00');
     const fmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
-    const cancelUrl=`${location.origin}${location.pathname}#cancelar/${codigo}`;
     document.getElementById('success-card').innerHTML=`
+      <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Cliente</div><div class="s-val">${clienteSession.nome}</div></div></div>
       <div class="success-row"><span class="s-icon">✂️</span><div><div class="s-lbl">Serviço</div><div class="s-val">${this.selectedServico.nome}</div></div></div>
       <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Profissional</div><div class="s-val">${this.selectedProfissional.nome}</div></div></div>
       <div class="success-row"><span class="s-icon">📅</span><div><div class="s-lbl">Data e hora</div><div class="s-val">${fmt} às ${this.selectedHora}</div></div></div>
       <div class="success-row"><span class="s-icon">💰</span><div><div class="s-lbl">Total</div><div class="s-val">R$${this.selectedServico.preco}</div></div></div>
       <div style="margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#065f46;margin-bottom:6px;">🔑 Seu código de cancelamento</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#065f46;margin-bottom:6px;">🔑 Código de cancelamento</div>
         <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#064e3b;letter-spacing:6px;text-align:center;padding:8px 0;">${codigo}</div>
         <div style="font-size:11px;color:#065f46;text-align:center;margin-top:4px;">Guarde este código para cancelar se precisar</div>
       </div>
