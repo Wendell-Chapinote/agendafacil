@@ -662,20 +662,77 @@ const App = {
   // PROFISSIONAIS
   renderProfissionais(negocioId){
     const profs=DB.getProfissionais(negocioId);
+    const previewFoto=this._novoProfFoto?`<img src="${this._novoProfFoto}">`:'<span style="font-size:22px;">👤</span>';
     return`<div class="add-form">
       <div class="add-form-title">➕ Novo profissional</div>
+      <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;">
+        <label class="logo-box" style="width:64px;height:64px;">
+          ${previewFoto}
+          <input type="file" accept="image/*" onchange="App.previewNovaFotoProf(event)">
+        </label>
+        <div style="font-size:12px;color:var(--muted);">Foto do profissional<br><span style="font-size:11px;">(opcional)</span></div>
+      </div>
       <div class="form-group"><input class="form-input no-icon" type="text" id="p-nome" placeholder="Nome do barbeiro"></div>
       <button class="btn-primary" onclick="App.addProfissional('${negocioId}')">Adicionar profissional</button>
     </div>
-    ${profs.length?profs.map(p=>`<div class="cfg-card"><div class="cfg-info"><div class="cfg-name">👤 ${p.nome}</div></div><button class="btn-danger" onclick="App.deleteProfissional('${p.id}','${negocioId}')">Remover</button></div>`).join(''):'<div class="empty-state"><div class="empty-icon">👤</div><div class="empty-text">Nenhum profissional cadastrado</div></div>'}`;
+    ${profs.length?profs.map(p=>{
+      const fotoHtml=p.foto?`<img src="${p.foto}">`:'<span style="font-size:20px;">👤</span>';
+      return`<div class="cfg-card">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;">
+          <label class="logo-box" style="width:48px;height:48px;flex-shrink:0;" title="Clique para trocar foto">
+            ${fotoHtml}
+            <input type="file" accept="image/*" onchange="App.uploadFotoProf(event,'${p.id}','${negocioId}')">
+          </label>
+          <div class="cfg-info">
+            <div class="cfg-name">${p.nome}</div>
+            ${p.foto?`<div class="cfg-detail" style="cursor:pointer;color:var(--red);" onclick="App.removerFotoProf('${p.id}','${negocioId}')">Remover foto</div>`:''}
+          </div>
+        </div>
+        <button class="btn-danger" onclick="App.deleteProfissional('${p.id}','${negocioId}')">Remover</button>
+      </div>`;
+    }).join(''):'<div class="empty-state"><div class="empty-icon">👤</div><div class="empty-text">Nenhum profissional cadastrado</div></div>'}`;
+  },
+
+  previewNovaFotoProf(e){
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      this._novoProfFoto=ev.target.result;
+      const session=DB.getSession();
+      const negocio=DB.getNegocioById(session.negocioId);
+      document.getElementById('painel-content').innerHTML=this.renderProfissionais(negocio.id);
+    };
+    reader.readAsDataURL(file);
   },
 
   addProfissional(nId){
     const nome=document.getElementById('p-nome').value.trim();
     if(!nome){this.showToast('⚠️ Digite o nome');return}
-    DB.saveProfissional({id:DB.uid(),negocioId:nId,nome});
+    DB.saveProfissional({id:DB.uid(),negocioId:nId,nome,foto:this._novoProfFoto||''});
+    this._novoProfFoto=null;
     document.getElementById('painel-content').innerHTML=this.renderProfissionais(nId);
     this.showToast('✅ Profissional adicionado!');
+  },
+
+  uploadFotoProf(e,profId,nId){
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const profs=DB.getProfissionais(nId);
+      const prof=profs.find(p=>p.id===profId);
+      if(prof){prof.foto=ev.target.result;DB.saveProfissional(prof)}
+      document.getElementById('painel-content').innerHTML=this.renderProfissionais(nId);
+      this.showToast('✅ Foto atualizada!');
+    };
+    reader.readAsDataURL(file);
+  },
+
+  removerFotoProf(profId,nId){
+    const profs=DB.getProfissionais(nId);
+    const prof=profs.find(p=>p.id===profId);
+    if(prof){prof.foto='';DB.saveProfissional(prof)}
+    document.getElementById('painel-content').innerHTML=this.renderProfissionais(nId);
+    this.showToast('🗑️ Foto removida');
   },
 
   deleteProfissional(id,nId){DB.deleteProfissional(id);document.getElementById('painel-content').innerHTML=this.renderProfissionais(nId);this.showToast('🗑️ Removido')},
@@ -1035,7 +1092,7 @@ const App = {
         <div class="section">
           <div class="section-label">2. Escolha o profissional</div>
           <div class="barber-list">
-            ${profs.map(p=>`<div class="barber-card" onclick="App.selectProfissional('${p.id}')" data-id="${p.id}"><div class="barber-avatar">👤</div><div class="barber-name">${p.nome}</div></div>`).join('')}
+            ${profs.map(p=>`<div class="barber-card" onclick="App.selectProfissional('${p.id}')" data-id="${p.id}"><div class="barber-avatar">${p.foto?`<img src="${p.foto}" style="width:100%;height:100%;object-fit:cover;">`:'👤'}</div><div class="barber-name">${p.nome}</div></div>`).join('')}
           </div>
         </div>
         <div class="section">
