@@ -183,6 +183,9 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--dark);min
 .day-slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s}
 .day-toggle input:checked+.day-slider{background:var(--gold)}
 .day-toggle input:checked+.day-slider:before{transform:translateX(18px)}
+.day-toggle-sm{width:34px;height:19px}
+.day-toggle-sm .day-slider:before{width:13px;height:13px}
+.day-toggle-sm input:checked+.day-slider:before{transform:translateX(15px)}
 .day-name{font-size:13px;font-weight:600;width:36px;flex-shrink:0}
 .day-times{display:flex;gap:6px;flex:1;align-items:center}
 .time-input{width:74px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg)}
@@ -478,7 +481,8 @@ const App = {
       return`<div class="ag-card ${ag.status}">
         <div class="ag-head"><div class="ag-nome">${ag.clienteNome}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
         <div class="ag-info">
-          <span>📱 ${ag.clienteTel}</span>
+          <span>📱 ${ag.clienteTel||'-'}</span>
+          ${ag.clienteEmail?`<span>✉️ ${ag.clienteEmail}</span>`:''}
           <span>✂️ ${s?s.nome:'-'} · R$${s?s.preco:'-'}</span>
           <span>👤 ${p?p.nome:'-'}</span>
           <span>📅 ${df} às ${ag.hora}</span>
@@ -498,14 +502,15 @@ const App = {
   bloquearClienteDeAg(agId,nId){
     const all=JSON.parse(localStorage.getItem('agendamentos')||'[]');
     const ag=all.find(a=>a.id===agId);
-    if(!ag)return;
+    if(!ag){this.showToast('⚠️ Agendamento não encontrado');return}
     const lista=DB.getClientesBloqueados(nId);
-    if(lista.some(c=>c.clienteId===ag.clienteId)){this.showToast('⚠️ Cliente já bloqueado');return}
-    lista.push({clienteId:ag.clienteId,nome:ag.clienteNome,tel:ag.clienteTel,email:ag.clienteEmail||'',bloqueadoEm:new Date().toISOString()});
+    const jaExiste=lista.some(c=>(ag.clienteId&&c.clienteId===ag.clienteId)||(ag.clienteTel&&c.tel===ag.clienteTel));
+    if(jaExiste){this.showToast('⚠️ Cliente já está bloqueado');return}
+    lista.push({clienteId:ag.clienteId||null,nome:ag.clienteNome||'Desconhecido',tel:ag.clienteTel||'',email:ag.clienteEmail||'',bloqueadoEm:new Date().toISOString()});
     DB.saveClientesBloqueados(nId,lista);
     DB.updateStatus(agId,'cancelado');
     document.getElementById('painel-content').innerHTML=this.renderAgenda(nId);
-    this.showToast('🚫 Cliente bloqueado e agendamento cancelado');
+    this.showToast('🚫 Cliente bloqueado!');
   },
 
   // HISTÓRICO
@@ -515,14 +520,14 @@ const App = {
       <div class="form-group">
         <input class="form-input no-icon" type="text" id="h-nome" placeholder="Nome do cliente" oninput="App.filtrarHistorico('${negocioId}')">
       </div>
-      <div class="form-row" style="margin-bottom:0;">
-        <div>
+      <div style="display:flex;gap:8px;margin-bottom:0;">
+        <div style="flex:1;min-width:0;">
           <label class="form-label">De</label>
-          <input class="form-input no-icon" type="date" id="h-de" oninput="App.filtrarHistorico('${negocioId}')">
+          <input class="form-input no-icon" type="date" id="h-de" style="width:100%;font-size:13px;padding:10px 10px;" oninput="App.filtrarHistorico('${negocioId}')">
         </div>
-        <div>
+        <div style="flex:1;min-width:0;">
           <label class="form-label">Até</label>
-          <input class="form-input no-icon" type="date" id="h-ate" oninput="App.filtrarHistorico('${negocioId}')">
+          <input class="form-input no-icon" type="date" id="h-ate" style="width:100%;font-size:13px;padding:10px 10px;" oninput="App.filtrarHistorico('${negocioId}')">
         </div>
       </div>
     </div>
@@ -548,15 +553,20 @@ const App = {
       const s=servicos.find(x=>x.id===ag.servicoId);
       const p=profs.find(x=>x.id===ag.profissionalId);
       const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-      const statusColor=ag.status==='confirmado'?'var(--green)':ag.status==='cancelado'?'#ccc':'#92400e';
+      const jaBloqueado=DB.getClientesBloqueados(negocioId).some(c=>(ag.clienteId&&c.clienteId===ag.clienteId)||(ag.clienteTel&&c.tel===ag.clienteTel));
       return`<div class="ag-card ${ag.status}">
         <div class="ag-head"><div class="ag-nome">${ag.clienteNome}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
         <div class="ag-info">
-          <span>📱 ${ag.clienteTel}</span>
+          <span>📱 ${ag.clienteTel||'-'}</span>
+          ${ag.clienteEmail?`<span>✉️ ${ag.clienteEmail}</span>`:''}
           <span>✂️ ${s?s.nome:'-'} · R$${s?s.preco:'-'}</span>
           <span>👤 ${p?p.nome:'-'}</span>
           <span>📅 ${df} às ${ag.hora}</span>
         </div>
+        ${!jaBloqueado?`
+        <div class="ag-actions">
+          <button class="btn-sm" style="background:transparent;border:1px solid #aaa;color:#888;" onclick="App.bloquearClienteDeAg('${ag.id}','${negocioId}')">🚫 Bloquear cliente</button>
+        </div>`:`<div style="font-size:11px;color:var(--red);padding-top:4px;">🚫 Cliente já bloqueado</div>`}
       </div>`;
     }).join('');
   },
@@ -564,40 +574,49 @@ const App = {
   // BLOQUEADOS
   renderBloqueados(negocioId){
     const lista=DB.getClientesBloqueados(negocioId);
-    return`<div class="add-form">
-      <div class="add-form-title">🚫 Bloquear cliente por e-mail</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Clientes bloqueados não conseguem agendar nesta barbearia. Use o e-mail cadastrado do cliente.</div>
-      <div class="form-group">
-        <label class="form-label">E-mail do cliente</label>
-        <input class="form-input no-icon" type="email" id="bl-nome" placeholder="email@exemplo.com">
+    return`
+      <div class="add-form">
+        <div class="add-form-title">🚫 Bloquear cliente por e-mail</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Use o e-mail cadastrado do cliente no AgendaFácil.</div>
+        <div class="form-group">
+          <label class="form-label">E-mail do cliente</label>
+          <input class="form-input no-icon" type="email" id="bl-email" placeholder="email@exemplo.com">
+        </div>
+        <div id="bl-erro" style="color:var(--red);font-size:12px;margin-bottom:8px;min-height:16px;"></div>
+        <button class="btn-primary" style="background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 20px rgba(239,68,68,.3);" onclick="App.adicionarBloqueio('${negocioId}')">🚫 Bloquear cliente</button>
       </div>
-      <div id="bl-erro" style="color:var(--red);font-size:12px;margin-bottom:8px;"></div>
-      <button class="btn-primary" style="background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 20px rgba(239,68,68,.3);" onclick="App.adicionarBloqueio('${negocioId}')">🚫 Bloquear cliente</button>
-    </div>
-    ${lista.length?`
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px;">${lista.length} cliente(s) bloqueado(s)</div>
-      ${lista.map((c,i)=>`
-        <div class="cfg-card" style="border-left:4px solid var(--red);">
-          <div class="cfg-info">
-            <div class="cfg-name">🚫 ${c.nome}</div>
-            <div class="cfg-detail">📱 ${c.tel||'-'} · ✉️ ${c.email||'-'}</div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px;">
+        ${lista.length?`${lista.length} cliente(s) bloqueado(s)`:'Nenhum cliente bloqueado'}
+      </div>
+      ${lista.length?lista.map((c,i)=>`
+        <div style="background:var(--white);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);border-left:4px solid var(--red);">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+            <div style="flex:1;">
+              <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🚫 ${c.nome}</div>
+              <div style="font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px;">
+                ${c.tel?`<span>📱 ${c.tel}</span>`:''}
+                ${c.email?`<span>✉️ ${c.email}</span>`:''}
+                <span>📅 Bloqueado em ${new Date(c.bloqueadoEm).toLocaleDateString('pt-BR')}</span>
+              </div>
+            </div>
+            <button onclick="App.desbloquearCliente(${i},'${negocioId}')"
+              style="flex-shrink:0;padding:8px 14px;background:var(--green);border:none;border-radius:10px;color:white;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">
+              ✅ Desbloquear
+            </button>
           </div>
-          <button class="btn-sm" style="background:var(--green);color:white;" onclick="App.desbloquearCliente(${i},'${negocioId}')">Desbloquear</button>
-        </div>`).join('')}`
-    :`<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">Nenhum cliente bloqueado</div></div>`}`;
+        </div>`).join('')
+      :`<div class="empty-state"><div class="empty-icon">✅</div><div class="empty-text">Nenhum cliente bloqueado</div></div>`}`;
   },
 
   adicionarBloqueio(nId){
-    const emailOuTel=document.getElementById('bl-nome').value.trim();
+    const email=document.getElementById('bl-email').value.trim();
     const errEl=document.getElementById('bl-erro');
-    if(!emailOuTel){this.showToast('⚠️ Digite o e-mail do cliente');return}
-    const cliente=DB.getClienteByEmail(emailOuTel);
-    if(!cliente){
-      if(errEl)errEl.textContent='Cliente não encontrado com este e-mail.';
-      this.showToast('⚠️ Cliente não encontrado');return;
-    }
+    errEl.textContent='';
+    if(!email){errEl.textContent='Digite o e-mail do cliente.';return}
+    const cliente=DB.getClienteByEmail(email);
+    if(!cliente){errEl.textContent='Nenhum cliente encontrado com este e-mail.';return}
     const lista=DB.getClientesBloqueados(nId);
-    if(lista.some(c=>c.clienteId===cliente.id)){this.showToast('⚠️ Cliente já bloqueado');return}
+    if(lista.some(c=>c.clienteId===cliente.id||c.email===email)){errEl.textContent='Este cliente já está bloqueado.';return}
     lista.push({clienteId:cliente.id,nome:cliente.nome,tel:cliente.tel,email:cliente.email,bloqueadoEm:new Date().toISOString()});
     DB.saveClientesBloqueados(nId,lista);
     document.getElementById('painel-content').innerHTML=this.renderBloqueados(nId);
@@ -606,10 +625,11 @@ const App = {
 
   desbloquearCliente(idx,nId){
     const lista=DB.getClientesBloqueados(nId);
+    const nome=lista[idx]?lista[idx].nome:'';
     lista.splice(idx,1);
     DB.saveClientesBloqueados(nId,lista);
     document.getElementById('painel-content').innerHTML=this.renderBloqueados(nId);
-    this.showToast('✅ Cliente desbloqueado!');
+    this.showToast(`✅ ${nome} desbloqueado!`);
   },
 
   // SERVIÇOS
@@ -662,18 +682,37 @@ const App = {
 
   // HORÁRIOS
   renderHorarios(negocioId){
-    const h=DB.getHorarios(negocioId)||{0:{on:false,inicio:'08:00',fim:'18:00'},1:{on:true,inicio:'08:00',fim:'18:00'},2:{on:true,inicio:'08:00',fim:'18:00'},3:{on:true,inicio:'08:00',fim:'18:00'},4:{on:true,inicio:'08:00',fim:'18:00'},5:{on:true,inicio:'08:00',fim:'18:00'},6:{on:true,inicio:'08:00',fim:'13:00'},bloqueados:[]};
+    const defaults={0:{on:false,inicio:'08:00',fim:'18:00'},1:{on:true,inicio:'08:00',fim:'18:00'},2:{on:true,inicio:'08:00',fim:'18:00'},3:{on:true,inicio:'08:00',fim:'18:00'},4:{on:true,inicio:'08:00',fim:'18:00'},5:{on:true,inicio:'08:00',fim:'18:00'},6:{on:true,inicio:'08:00',fim:'13:00'},bloqueados:[]};
+    const h=DB.getHorarios(negocioId)||defaults;
     const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
-    const rows=dias.map((d,i)=>`
-      <div class="day-row">
-        <label class="day-toggle"><input type="checkbox" id="day-${i}" ${h[i].on?'checked':''} onchange="App.toggleDia(${i},'${negocioId}')"><span class="day-slider"></span></label>
-        <span class="day-name">${d}</span>
-        <div class="day-times" id="day-times-${i}" style="${h[i].on?'':'opacity:.3;pointer-events:none'}">
-          <input class="time-input" type="time" id="day-ini-${i}" value="${h[i].inicio}" onchange="App.salvarHorarios('${negocioId}')">
-          <span class="time-sep">até</span>
-          <input class="time-input" type="time" id="day-fim-${i}" value="${h[i].fim}" onchange="App.salvarHorarios('${negocioId}')">
+    const rows=dias.map((d,i)=>{
+      const dia=h[i]||defaults[i];
+      const almoco=dia.almoco||{on:false,inicio:'12:00',fim:'13:00'};
+      return`
+      <div class="day-row" style="flex-direction:column;align-items:stretch;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <label class="day-toggle"><input type="checkbox" id="day-${i}" ${dia.on?'checked':''} onchange="App.toggleDia(${i},'${negocioId}')"><span class="day-slider"></span></label>
+          <span class="day-name">${d}</span>
+          <div class="day-times" id="day-times-${i}" style="${dia.on?'':'opacity:.3;pointer-events:none'}">
+            <input class="time-input" type="time" id="day-ini-${i}" value="${dia.inicio}" onchange="App.salvarHorarios('${negocioId}')">
+            <span class="time-sep">até</span>
+            <input class="time-input" type="time" id="day-fim-${i}" value="${dia.fim}" onchange="App.salvarHorarios('${negocioId}')">
+          </div>
         </div>
-      </div>`).join('');
+        <div id="almoco-wrap-${i}" style="display:${dia.on?'flex':'none'};align-items:center;gap:10px;padding-left:50px;">
+          <label class="day-toggle day-toggle-sm">
+            <input type="checkbox" id="almoco-on-${i}" ${almoco.on?'checked':''} onchange="App.toggleAlmoco(${i},'${negocioId}')">
+            <span class="day-slider"></span>
+          </label>
+          <span style="font-size:12px;color:var(--muted);width:40px;flex-shrink:0;">🍽️ Almoço</span>
+          <div class="day-times" id="almoco-times-${i}" style="${almoco.on?'':'opacity:.3;pointer-events:none'}">
+            <input class="time-input" type="time" id="almoco-ini-${i}" value="${almoco.inicio}" onchange="App.salvarHorarios('${negocioId}')" style="width:66px;">
+            <span class="time-sep">até</span>
+            <input class="time-input" type="time" id="almoco-fim-${i}" value="${almoco.fim}" onchange="App.salvarHorarios('${negocioId}')" style="width:66px;">
+          </div>
+        </div>
+      </div>`;
+    }).join('');
 
     const bloqueados=h.bloqueados||[];
     const bloqueiasHtml=bloqueados.length?bloqueados.map((d,i)=>`
@@ -684,7 +723,8 @@ const App = {
 
     return`
       <div class="add-form">
-        <div class="add-form-title">📅 Dias e horários de funcionamento</div>
+        <div class="add-form-title">📅 Dias, horários e almoço</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ative o dia, defina o expediente e, se quiser, bloqueie o horário de almoço para não receber agendamentos nesse intervalo.</div>
         ${rows}
         <button class="btn-primary" style="margin-top:8px;" onclick="App.salvarHorarios('${negocioId}')">💾 Salvar horários</button>
       </div>
@@ -704,6 +744,15 @@ const App = {
     const times=document.getElementById('day-times-'+i);
     times.style.opacity=checked?'1':'0.3';
     times.style.pointerEvents=checked?'auto':'none';
+    document.getElementById('almoco-wrap-'+i).style.display=checked?'flex':'none';
+    this.salvarHorarios(nId);
+  },
+
+  toggleAlmoco(i,nId){
+    const checked=document.getElementById('almoco-on-'+i).checked;
+    const times=document.getElementById('almoco-times-'+i);
+    times.style.opacity=checked?'1':'0.3';
+    times.style.pointerEvents=checked?'auto':'none';
     this.salvarHorarios(nId);
   },
 
@@ -716,6 +765,11 @@ const App = {
         on:document.getElementById('day-'+i)?document.getElementById('day-'+i).checked:(current[i]?current[i].on:false),
         inicio:document.getElementById('day-ini-'+i)?document.getElementById('day-ini-'+i).value:(current[i]?current[i].inicio:'08:00'),
         fim:document.getElementById('day-fim-'+i)?document.getElementById('day-fim-'+i).value:(current[i]?current[i].fim:'18:00'),
+        almoco:{
+          on:document.getElementById('almoco-on-'+i)?document.getElementById('almoco-on-'+i).checked:(current[i]&&current[i].almoco?current[i].almoco.on:false),
+          inicio:document.getElementById('almoco-ini-'+i)?document.getElementById('almoco-ini-'+i).value:(current[i]&&current[i].almoco?current[i].almoco.inicio:'12:00'),
+          fim:document.getElementById('almoco-fim-'+i)?document.getElementById('almoco-fim-'+i).value:(current[i]&&current[i].almoco?current[i].almoco.fim:'13:00'),
+        }
       };
     }
     DB.saveHorarios(nId,h);
@@ -1034,14 +1088,24 @@ const App = {
   },
 
   // CALENDAR
-  gerarSlots(inicio,fim,duracao){
+  gerarSlots(inicio,fim,duracao,almoco){
     const slots=[];
     const [hI,mI]=inicio.split(':').map(Number);
     const [hF,mF]=fim.split(':').map(Number);
     let cur=hI*60+mI;
     const end=hF*60+mF;
+    let almocoIni=null,almocoFim=null;
+    if(almoco&&almoco.on){
+      const [aI,amI]=almoco.inicio.split(':').map(Number);
+      const [aF,amF]=almoco.fim.split(':').map(Number);
+      almocoIni=aI*60+amI;almocoFim=aF*60+amF;
+    }
     while(cur+duracao<=end){
-      slots.push(`${String(Math.floor(cur/60)).padStart(2,'0')}:${String(cur%60).padStart(2,'0')}`);
+      const slotFim=cur+duracao;
+      const conflitaComAlmoco=almocoIni!==null&&(cur<almocoFim&&slotFim>almocoIni);
+      if(!conflitaComAlmoco){
+        slots.push(`${String(Math.floor(cur/60)).padStart(2,'0')}:${String(cur%60).padStart(2,'0')}`);
+      }
       cur+=duracao||30;
     }
     return slots;
@@ -1112,7 +1176,7 @@ const App = {
     const dow=new Date(this.selectedData+'T12:00:00').getDay();
     const dayConfig=h[dow]||{on:true,inicio:'08:00',fim:'18:00'};
     const duracao=this.selectedServico?this.selectedServico.duracao:30;
-    const slots=this.gerarSlots(dayConfig.inicio,dayConfig.fim,duracao);
+    const slots=this.gerarSlots(dayConfig.inicio,dayConfig.fim,duracao,dayConfig.almoco);
     const ocupados=DB.getHorariosOcupados(this.currentNegocio.id,this.selectedProfissional.id,this.selectedData);
     grid.innerHTML=slots.map(hora=>{
       const busy=ocupados.includes(hora);
