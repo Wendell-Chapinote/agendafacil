@@ -188,7 +188,7 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--dark);min
 .day-toggle-sm input:checked+.day-slider:before{transform:translateX(15px)}
 .day-name{font-size:13px;font-weight:600;width:36px;flex-shrink:0}
 .day-times{display:flex;gap:6px;flex:1;align-items:center}
-.time-input{width:74px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg)}
+.time-input{width:88px;padding:6px 4px;border:1px solid var(--border);border-radius:8px;font-size:12px;font-family:'DM Sans',sans-serif;color:var(--dark);background:var(--bg)}
 .time-sep{font-size:11px;color:var(--muted)}
 /* UPLOAD FOTO */
 .photo-upload{display:flex;flex-direction:column;gap:12px}
@@ -699,16 +699,16 @@ const App = {
             <input class="time-input" type="time" id="day-fim-${i}" value="${dia.fim}" onchange="App.salvarHorarios('${negocioId}')">
           </div>
         </div>
-        <div id="almoco-wrap-${i}" style="display:${dia.on?'flex':'none'};align-items:center;gap:10px;padding-left:50px;">
+        <div id="almoco-wrap-${i}" style="display:${dia.on?'flex':'none'};align-items:center;gap:8px;padding-left:36px;flex-wrap:wrap;">
           <label class="day-toggle day-toggle-sm">
             <input type="checkbox" id="almoco-on-${i}" ${almoco.on?'checked':''} onchange="App.toggleAlmoco(${i},'${negocioId}')">
             <span class="day-slider"></span>
           </label>
-          <span style="font-size:12px;color:var(--muted);width:40px;flex-shrink:0;">🍽️ Almoço</span>
-          <div class="day-times" id="almoco-times-${i}" style="${almoco.on?'':'opacity:.3;pointer-events:none'}">
-            <input class="time-input" type="time" id="almoco-ini-${i}" value="${almoco.inicio}" onchange="App.salvarHorarios('${negocioId}')" style="width:66px;">
+          <span style="font-size:12px;color:var(--muted);flex-shrink:0;">🍽️ Almoço</span>
+          <div class="day-times" id="almoco-times-${i}" style="${almoco.on?'':'opacity:.3;pointer-events:none'};width:100%;">
+            <input class="time-input" type="time" id="almoco-ini-${i}" value="${almoco.inicio}" onchange="App.salvarHorarios('${negocioId}')">
             <span class="time-sep">até</span>
-            <input class="time-input" type="time" id="almoco-fim-${i}" value="${almoco.fim}" onchange="App.salvarHorarios('${negocioId}')" style="width:66px;">
+            <input class="time-input" type="time" id="almoco-fim-${i}" value="${almoco.fim}" onchange="App.salvarHorarios('${negocioId}')">
           </div>
         </div>
       </div>`;
