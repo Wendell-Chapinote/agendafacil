@@ -233,8 +233,8 @@ const DB = {
   saveAgendamento(ag){const a=JSON.parse(localStorage.getItem('agendamentos')||'[]');const i=a.findIndex(x=>x.id===ag.id);if(i>=0)a[i]=ag;else a.push(ag);localStorage.setItem('agendamentos',JSON.stringify(a))},
   updateStatus(id,status){const a=JSON.parse(localStorage.getItem('agendamentos')||'[]');const i=a.findIndex(x=>x.id===id);if(i>=0){a[i].status=status;localStorage.setItem('agendamentos',JSON.stringify(a))}},
   getHorariosOcupados(nId,pId,data){return(JSON.parse(localStorage.getItem('agendamentos')||'[]')).filter(a=>a.negocioId===nId&&a.profissionalId===pId&&a.data===data&&a.status!=='cancelado').map(a=>a.hora)},
-  getHorarios(nId){return JSON.parse(localStorage.getItem('horarios_'+nId)||'null')},
-  saveHorarios(nId,h){localStorage.setItem('horarios_'+nId,JSON.stringify(h))},
+  getHorarios(nId,profId){return JSON.parse(localStorage.getItem('horarios_'+nId+'_'+profId)||'null')},
+  saveHorarios(nId,profId,h){localStorage.setItem('horarios_'+nId+'_'+profId,JSON.stringify(h))},
   login(email,senha){return(JSON.parse(localStorage.getItem('users')||'[]')).find(u=>u.email===email&&u.senha===senha)||null},
   register(nome,email,senha,slug,nomeBarbearia){
     const users=JSON.parse(localStorage.getItem('users')||'[]');
@@ -250,11 +250,12 @@ const DB = {
     servicos.push({id:'s_'+Date.now(),negocioId,nome:'Corte Masculino',duracao:30,preco:45});
     localStorage.setItem('servicos',JSON.stringify(servicos));
     const profs=JSON.parse(localStorage.getItem('profissionais')||'[]');
-    profs.push({id:'p_'+Date.now(),negocioId,nome});
+    const profId='p_'+Date.now();
+    profs.push({id:profId,negocioId,nome,foto:''});
     localStorage.setItem('profissionais',JSON.stringify(profs));
-    // horários padrão seg-sex 8-18
-    const defaultH={0:{on:false,inicio:'08:00',fim:'18:00'},1:{on:true,inicio:'08:00',fim:'18:00'},2:{on:true,inicio:'08:00',fim:'18:00'},3:{on:true,inicio:'08:00',fim:'18:00'},4:{on:true,inicio:'08:00',fim:'18:00'},5:{on:true,inicio:'08:00',fim:'18:00'},6:{on:true,inicio:'08:00',fim:'13:00'},bloqueados:[]};
-    localStorage.setItem('horarios_'+negocioId,JSON.stringify(defaultH));
+    // horários padrão seg-sex 8-18, com almoço 12-13, por profissional
+    const defaultH={0:{on:false,inicio:'08:00',fim:'18:00',almoco:{on:false,inicio:'12:00',fim:'13:00'}},1:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},2:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},3:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},4:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},5:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},6:{on:true,inicio:'08:00',fim:'13:00',almoco:{on:false,inicio:'12:00',fim:'13:00'}},bloqueados:[]};
+    localStorage.setItem('horarios_'+negocioId+'_'+profId,JSON.stringify(defaultH));
     return{userId,negocioId};
   },
   // CLIENTES (conta global)
@@ -296,10 +297,17 @@ const DB = {
   s.push({id:'s1',negocioId:nId,nome:'Corte Masculino',duracao:30,preco:45},{id:'s2',negocioId:nId,nome:'Corte + Barba',duracao:50,preco:70},{id:'s3',negocioId:nId,nome:'Pacote Premium',duracao:75,preco:100});
   localStorage.setItem('servicos',JSON.stringify(s));
   const p=JSON.parse(localStorage.getItem('profissionais')||'[]');
-  p.push({id:'p1',negocioId:nId,nome:'João'},{id:'p2',negocioId:nId,nome:'Pedro'},{id:'p3',negocioId:nId,nome:'Carlos'});
+  p.push({id:'p1',negocioId:nId,nome:'João',foto:''},{id:'p2',negocioId:nId,nome:'Pedro',foto:''},{id:'p3',negocioId:nId,nome:'Carlos',foto:''});
   localStorage.setItem('profissionais',JSON.stringify(p));
-  const h={0:{on:false,inicio:'08:00',fim:'18:00'},1:{on:true,inicio:'08:00',fim:'18:00'},2:{on:true,inicio:'08:00',fim:'18:00'},3:{on:true,inicio:'08:00',fim:'18:00'},4:{on:true,inicio:'08:00',fim:'18:00'},5:{on:true,inicio:'08:00',fim:'18:00'},6:{on:true,inicio:'08:00',fim:'13:00'},bloqueados:[]};
-  localStorage.setItem('horarios_'+nId,JSON.stringify(h));
+  // João: seg-sex 8h-18h com almoço 12-13h, sábado 8h-13h sem almoço
+  const hJoao={0:{on:false,inicio:'08:00',fim:'18:00',almoco:{on:false,inicio:'12:00',fim:'13:00'}},1:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},2:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},3:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},4:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},5:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},6:{on:true,inicio:'08:00',fim:'13:00',almoco:{on:false,inicio:'12:00',fim:'13:00'}},bloqueados:[]};
+  localStorage.setItem('horarios_'+nId+'_p1',JSON.stringify(hJoao));
+  // Pedro: terça a sábado 10h-19h com almoço 13-14h, folga domingo e segunda
+  const hPedro={0:{on:false,inicio:'10:00',fim:'19:00',almoco:{on:false,inicio:'13:00',fim:'14:00'}},1:{on:false,inicio:'10:00',fim:'19:00',almoco:{on:false,inicio:'13:00',fim:'14:00'}},2:{on:true,inicio:'10:00',fim:'19:00',almoco:{on:true,inicio:'13:00',fim:'14:00'}},3:{on:true,inicio:'10:00',fim:'19:00',almoco:{on:true,inicio:'13:00',fim:'14:00'}},4:{on:true,inicio:'10:00',fim:'19:00',almoco:{on:true,inicio:'13:00',fim:'14:00'}},5:{on:true,inicio:'10:00',fim:'19:00',almoco:{on:true,inicio:'13:00',fim:'14:00'}},6:{on:true,inicio:'09:00',fim:'15:00',almoco:{on:false,inicio:'13:00',fim:'14:00'}},bloqueados:[]};
+  localStorage.setItem('horarios_'+nId+'_p2',JSON.stringify(hPedro));
+  // Carlos: seg-sex 8h-17h com almoço 12-13h, não trabalha aos sábados
+  const hCarlos={0:{on:false,inicio:'08:00',fim:'17:00',almoco:{on:false,inicio:'12:00',fim:'13:00'}},1:{on:true,inicio:'08:00',fim:'17:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},2:{on:true,inicio:'08:00',fim:'17:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},3:{on:true,inicio:'08:00',fim:'17:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},4:{on:true,inicio:'08:00',fim:'17:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},5:{on:true,inicio:'08:00',fim:'17:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},6:{on:false,inicio:'08:00',fim:'13:00',almoco:{on:false,inicio:'12:00',fim:'13:00'}},bloqueados:[]};
+  localStorage.setItem('horarios_'+nId+'_p3',JSON.stringify(hCarlos));
 })();
 </script>
 <script>
@@ -463,10 +471,18 @@ const App = {
 
   // AGENDA
   renderAgenda(negocioId){
+    const modo=this.agendaViewMode||'lista';
+    const toggle=`
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <button onclick="App.setAgendaView('lista','${negocioId}')" style="flex:1;padding:10px;border-radius:10px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;background:${modo==='lista'?'var(--dark)':'var(--white)'};color:${modo==='lista'?'white':'var(--muted)'};box-shadow:var(--shadow);">📋 Lista</button>
+        <button onclick="App.setAgendaView('dia','${negocioId}')" style="flex:1;padding:10px;border-radius:10px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;background:${modo==='dia'?'var(--dark)':'var(--white)'};color:${modo==='dia'?'white':'var(--muted)'};box-shadow:var(--shadow);">🕐 Visão do Dia</button>
+      </div>`;
+    if(modo==='dia')return toggle+this.renderAgendaDia(negocioId);
+
     const today=new Date().toISOString().split('T')[0];
     const ags=DB.getAgendamentos(negocioId).filter(a=>a.data>=today).sort((a,b)=>(a.data+a.hora).localeCompare(b.data+b.hora));
-    if(!ags.length)return`<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Nenhum agendamento ainda.<br>Compartilhe seu link com os clientes!</div></div>`;
-    return ags.map(ag=>{
+    if(!ags.length)return toggle+`<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Nenhum agendamento ainda.<br>Compartilhe seu link com os clientes!</div></div>`;
+    return toggle+ags.map(ag=>{
       const s=DB.getServicos(negocioId).find(x=>x.id===ag.servicoId);
       const p=DB.getProfissionais(negocioId).find(x=>x.id===ag.profissionalId);
       const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'});
@@ -490,6 +506,128 @@ const App = {
         <div class="ag-actions">${actions}</div>
       </div>`;
     }).join('');
+  },
+
+  setAgendaView(modo,negocioId){
+    this.agendaViewMode=modo;
+    if(modo==='dia'&&!this.agendaDiaData)this.agendaDiaData=new Date().toISOString().split('T')[0];
+    document.getElementById('painel-content').innerHTML=this.renderAgenda(negocioId);
+  },
+
+  // VISÃO DO DIA — linha do tempo
+  renderAgendaDia(negocioId){
+    const profs=DB.getProfissionais(negocioId);
+    if(!profs.length)return`<div class="empty-state"><div class="empty-icon">👤</div><div class="empty-text">Cadastre um profissional primeiro</div></div>`;
+    if(!this.agendaDiaData)this.agendaDiaData=new Date().toISOString().split('T')[0];
+    if(!this.agendaDiaProf||!profs.some(p=>p.id===this.agendaDiaProf))this.agendaDiaProf=profs[0].id;
+
+    const data=this.agendaDiaData;
+    const profId=this.agendaDiaProf;
+    const d=new Date(data+'T12:00:00');
+    const dataFmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+    const dow=d.getDay();
+
+    const h=DB.getHorarios(negocioId,profId)||{};
+    const dayConfig=h[dow];
+    const bloqueados=h.bloqueados||[];
+    const dataBloqueada=bloqueados.includes(data);
+
+    const header=`
+      <div style="background:var(--white);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <button class="cal-nav" onclick="App.mudarDiaAgenda(-1,'${negocioId}')">‹</button>
+          <div style="text-align:center;">
+            <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;text-transform:capitalize;">${dataFmt}</div>
+          </div>
+          <button class="cal-nav" onclick="App.mudarDiaAgenda(1,'${negocioId}')">›</button>
+        </div>
+        <select onchange="App.mudarProfAgenda(this.value,'${negocioId}')" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--bg);color:var(--dark);">
+          ${profs.map(p=>`<option value="${p.id}" ${p.id===profId?'selected':''}>👤 ${p.nome}</option>`).join('')}
+        </select>
+      </div>`;
+
+    if(!dayConfig||!dayConfig.on||dataBloqueada){
+      return header+`<div class="empty-state"><div class="empty-icon">🚪</div><div class="empty-text">${dataBloqueada?'Data bloqueada — sem expediente':'Fechado neste dia da semana'}</div></div>`;
+    }
+
+    // gera timeline de 30 em 30 min
+    const [hI,mI]=dayConfig.inicio.split(':').map(Number);
+    const [hF,mF]=dayConfig.fim.split(':').map(Number);
+    let cur=hI*60+mI;
+    const end=hF*60+mF;
+    const almoco=dayConfig.almoco;
+    let almocoIni=null,almocoFim=null;
+    if(almoco&&almoco.on){
+      const [aI,amI]=almoco.inicio.split(':').map(Number);
+      const [aF,amF]=almoco.fim.split(':').map(Number);
+      almocoIni=aI*60+amI;almocoFim=aF*60+amF;
+    }
+
+    const servicos=DB.getServicos(negocioId);
+    const ags=DB.getAgendamentos(negocioId).filter(a=>a.data===data&&a.profissionalId===profId&&a.status!=='cancelado');
+    // monta ranges ocupados com info
+    const ocupados=ags.map(a=>{
+      const s=servicos.find(x=>x.id===a.servicoId);
+      const dur=s?s.duracao:30;
+      const [hh,mm]=a.hora.split(':').map(Number);
+      const ini=hh*60+mm;
+      return{ini,fim:ini+dur,ag:a,servico:s};
+    });
+
+    const linhas=[];
+    let cursor=cur;
+    while(cursor<end){
+      const slotFim=cursor+30;
+      const horaLabel=`${String(Math.floor(cursor/60)).padStart(2,'0')}:${String(cursor%60).padStart(2,'0')}`;
+      const noAlmoco=almocoIni!==null&&cursor<almocoFim&&slotFim>almocoIni;
+      const ocupado=ocupados.find(o=>cursor<o.fim&&slotFim>o.ini);
+      if(noAlmoco){
+        linhas.push(`<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#f3f4f6;border-radius:10px;margin-bottom:6px;">
+          <div style="font-size:12px;font-weight:700;color:var(--muted);width:44px;flex-shrink:0;">${horaLabel}</div>
+          <div style="font-size:12px;color:var(--muted);">🍽️ Horário de almoço</div>
+        </div>`);
+      }else if(ocupado){
+        // só mostra o card no início do agendamento pra não repetir
+        if(cursor<=ocupado.ini&&cursor+30>ocupado.ini){
+          const statusColor=ocupado.ag.status==='confirmado'?'var(--green)':'var(--gold)';
+          linhas.push(`<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:white;border-radius:10px;margin-bottom:6px;border-left:4px solid ${statusColor};box-shadow:var(--shadow);">
+            <div style="font-size:12px;font-weight:700;color:var(--dark);width:44px;flex-shrink:0;">${ocupado.ag.hora}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:700;">${ocupado.ag.clienteNome}</div>
+              <div style="font-size:11px;color:var(--muted);">✂️ ${ocupado.servico?ocupado.servico.nome:'-'} · ${ocupado.servico?ocupado.servico.duracao:30}min · ${ocupado.ag.status}</div>
+            </div>
+          </div>`);
+        }
+        // slots intermediários ocupados por um serviço longo não geram linha extra
+      }else{
+        linhas.push(`<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:transparent;border:1.5px dashed var(--border);border-radius:10px;margin-bottom:6px;">
+          <div style="font-size:12px;font-weight:700;color:var(--muted);width:44px;flex-shrink:0;">${horaLabel}</div>
+          <div style="font-size:12px;color:#bbb;">✅ Livre</div>
+        </div>`);
+      }
+      cursor+=30;
+    }
+
+    const totalOcupados=ags.length;
+    const legenda=`
+      <div style="display:flex;gap:14px;margin-bottom:14px;font-size:11px;color:var(--muted);flex-wrap:wrap;">
+        <span>🟡 Pendente</span><span>🟢 Confirmado</span><span>⬜ Livre</span><span>🍽️ Almoço</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">${totalOcupados} agendamento(s) neste dia</div>`;
+
+    return header+legenda+linhas.join('');
+  },
+
+  mudarDiaAgenda(delta,negocioId){
+    const d=new Date(this.agendaDiaData+'T12:00:00');
+    d.setDate(d.getDate()+delta);
+    this.agendaDiaData=d.toISOString().split('T')[0];
+    document.getElementById('painel-content').innerHTML=this.renderAgenda(negocioId);
+  },
+
+  mudarProfAgenda(profId,negocioId){
+    this.agendaDiaProf=profId;
+    document.getElementById('painel-content').innerHTML=this.renderAgenda(negocioId);
   },
 
   updateAg(id,status){
@@ -739,8 +877,13 @@ const App = {
 
   // HORÁRIOS
   renderHorarios(negocioId){
-    const defaults={0:{on:false,inicio:'08:00',fim:'18:00'},1:{on:true,inicio:'08:00',fim:'18:00'},2:{on:true,inicio:'08:00',fim:'18:00'},3:{on:true,inicio:'08:00',fim:'18:00'},4:{on:true,inicio:'08:00',fim:'18:00'},5:{on:true,inicio:'08:00',fim:'18:00'},6:{on:true,inicio:'08:00',fim:'13:00'},bloqueados:[]};
-    const h=DB.getHorarios(negocioId)||defaults;
+    const profs=DB.getProfissionais(negocioId);
+    if(!profs.length)return`<div class="empty-state"><div class="empty-icon">👤</div><div class="empty-text">Cadastre um profissional primeiro na aba Equipe</div></div>`;
+    if(!this.horariosProfId||!profs.some(p=>p.id===this.horariosProfId))this.horariosProfId=profs[0].id;
+    const profId=this.horariosProfId;
+
+    const defaults={0:{on:false,inicio:'08:00',fim:'18:00',almoco:{on:false,inicio:'12:00',fim:'13:00'}},1:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},2:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},3:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},4:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},5:{on:true,inicio:'08:00',fim:'18:00',almoco:{on:true,inicio:'12:00',fim:'13:00'}},6:{on:true,inicio:'08:00',fim:'13:00',almoco:{on:false,inicio:'12:00',fim:'13:00'}},bloqueados:[]};
+    const h=DB.getHorarios(negocioId,profId)||defaults;
     const dias=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
     const rows=dias.map((d,i)=>{
       const dia=h[i]||defaults[i];
@@ -748,24 +891,24 @@ const App = {
       return`
       <div class="day-row" style="flex-direction:column;align-items:stretch;gap:10px;">
         <div style="display:flex;align-items:center;gap:10px;">
-          <label class="day-toggle"><input type="checkbox" id="day-${i}" ${dia.on?'checked':''} onchange="App.toggleDia(${i},'${negocioId}')"><span class="day-slider"></span></label>
+          <label class="day-toggle"><input type="checkbox" id="day-${i}" ${dia.on?'checked':''} onchange="App.toggleDia(${i},'${negocioId}','${profId}')"><span class="day-slider"></span></label>
           <span class="day-name">${d}</span>
           <div class="day-times" id="day-times-${i}" style="${dia.on?'':'opacity:.3;pointer-events:none'}">
-            <input class="time-input" type="time" id="day-ini-${i}" value="${dia.inicio}" onchange="App.salvarHorarios('${negocioId}')">
+            <input class="time-input" type="time" id="day-ini-${i}" value="${dia.inicio}" onchange="App.salvarHorarios('${negocioId}','${profId}')">
             <span class="time-sep">até</span>
-            <input class="time-input" type="time" id="day-fim-${i}" value="${dia.fim}" onchange="App.salvarHorarios('${negocioId}')">
+            <input class="time-input" type="time" id="day-fim-${i}" value="${dia.fim}" onchange="App.salvarHorarios('${negocioId}','${profId}')">
           </div>
         </div>
         <div id="almoco-wrap-${i}" style="display:${dia.on?'flex':'none'};align-items:center;gap:8px;padding-left:36px;flex-wrap:wrap;">
           <label class="day-toggle day-toggle-sm">
-            <input type="checkbox" id="almoco-on-${i}" ${almoco.on?'checked':''} onchange="App.toggleAlmoco(${i},'${negocioId}')">
+            <input type="checkbox" id="almoco-on-${i}" ${almoco.on?'checked':''} onchange="App.toggleAlmoco(${i},'${negocioId}','${profId}')">
             <span class="day-slider"></span>
           </label>
           <span style="font-size:12px;color:var(--muted);flex-shrink:0;">🍽️ Almoço</span>
           <div class="day-times" id="almoco-times-${i}" style="${almoco.on?'':'opacity:.3;pointer-events:none'};width:100%;">
-            <input class="time-input" type="time" id="almoco-ini-${i}" value="${almoco.inicio}" onchange="App.salvarHorarios('${negocioId}')">
+            <input class="time-input" type="time" id="almoco-ini-${i}" value="${almoco.inicio}" onchange="App.salvarHorarios('${negocioId}','${profId}')">
             <span class="time-sep">até</span>
-            <input class="time-input" type="time" id="almoco-fim-${i}" value="${almoco.fim}" onchange="App.salvarHorarios('${negocioId}')">
+            <input class="time-input" type="time" id="almoco-fim-${i}" value="${almoco.fim}" onchange="App.salvarHorarios('${negocioId}','${profId}')">
           </div>
         </div>
       </div>`;
@@ -775,46 +918,57 @@ const App = {
     const bloqueiasHtml=bloqueados.length?bloqueados.map((d,i)=>`
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--white);border-radius:10px;margin-bottom:8px;box-shadow:var(--shadow);">
         <span style="font-size:13px;font-weight:600;">📵 ${new Date(d+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}</span>
-        <button class="btn-danger" onclick="App.desbloquearData(${i},'${negocioId}')">Remover</button>
+        <button class="btn-danger" onclick="App.desbloquearData(${i},'${negocioId}','${profId}')">Remover</button>
       </div>`).join(''):'<div style="font-size:13px;color:var(--muted);padding:8px 0;">Nenhuma data bloqueada</div>';
 
     return`
+      <div style="background:var(--white);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin-bottom:16px;">
+        <label class="form-label" style="margin-bottom:8px;">👤 Configurando horário de:</label>
+        <select onchange="App.mudarProfHorario(this.value,'${negocioId}')" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;background:var(--bg);color:var(--dark);">
+          ${profs.map(p=>`<option value="${p.id}" ${p.id===profId?'selected':''}>${p.nome}</option>`).join('')}
+        </select>
+      </div>
       <div class="add-form">
         <div class="add-form-title">📅 Dias, horários e almoço</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ative o dia, defina o expediente e, se quiser, bloqueie o horário de almoço para não receber agendamentos nesse intervalo.</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Cada profissional pode ter dias e horários diferentes. Ative o dia, defina o expediente e o horário de almoço, se houver.</div>
         ${rows}
-        <button class="btn-primary" style="margin-top:8px;" onclick="App.salvarHorarios('${negocioId}')">💾 Salvar horários</button>
+        <button class="btn-primary" style="margin-top:8px;" onclick="App.salvarHorarios('${negocioId}','${profId}')">💾 Salvar horários</button>
       </div>
       <div class="add-form">
         <div class="add-form-title">📵 Bloquear data específica</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Use para feriados, férias ou imprevistos</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Use para folgas, férias ou imprevistos deste profissional</div>
         <div class="form-group"><input class="form-input no-icon" type="date" id="bloquear-data" min="${new Date().toISOString().split('T')[0]}"></div>
-        <button class="btn-primary" onclick="App.bloquearData('${negocioId}')">Bloquear esta data</button>
+        <button class="btn-primary" onclick="App.bloquearData('${negocioId}','${profId}')">Bloquear esta data</button>
         <div class="section-divider"></div>
         <div style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">Datas bloqueadas</div>
         ${bloqueiasHtml}
       </div>`;
   },
 
-  toggleDia(i,nId){
+  mudarProfHorario(profId,negocioId){
+    this.horariosProfId=profId;
+    document.getElementById('painel-content').innerHTML=this.renderHorarios(negocioId);
+  },
+
+  toggleDia(i,nId,profId){
     const checked=document.getElementById('day-'+i).checked;
     const times=document.getElementById('day-times-'+i);
     times.style.opacity=checked?'1':'0.3';
     times.style.pointerEvents=checked?'auto':'none';
     document.getElementById('almoco-wrap-'+i).style.display=checked?'flex':'none';
-    this.salvarHorarios(nId);
+    this.salvarHorarios(nId,profId);
   },
 
-  toggleAlmoco(i,nId){
+  toggleAlmoco(i,nId,profId){
     const checked=document.getElementById('almoco-on-'+i).checked;
     const times=document.getElementById('almoco-times-'+i);
     times.style.opacity=checked?'1':'0.3';
     times.style.pointerEvents=checked?'auto':'none';
-    this.salvarHorarios(nId);
+    this.salvarHorarios(nId,profId);
   },
 
-  salvarHorarios(nId){
-    const current=DB.getHorarios(nId)||{bloqueados:[]};
+  salvarHorarios(nId,profId){
+    const current=DB.getHorarios(nId,profId)||{bloqueados:[]};
     const bloqueados=current.bloqueados||[];
     const h={bloqueados};
     for(let i=0;i<7;i++){
@@ -829,26 +983,26 @@ const App = {
         }
       };
     }
-    DB.saveHorarios(nId,h);
+    DB.saveHorarios(nId,profId,h);
     this.showToast('✅ Horários salvos!');
   },
 
-  bloquearData(nId){
+  bloquearData(nId,profId){
     const data=document.getElementById('bloquear-data').value;
     if(!data){this.showToast('⚠️ Selecione uma data');return}
-    const h=DB.getHorarios(nId)||{bloqueados:[]};
+    const h=DB.getHorarios(nId,profId)||{bloqueados:[]};
     if(!h.bloqueados)h.bloqueados=[];
     if(h.bloqueados.includes(data)){this.showToast('⚠️ Data já bloqueada');return}
     h.bloqueados.push(data);
-    DB.saveHorarios(nId,h);
+    DB.saveHorarios(nId,profId,h);
     document.getElementById('painel-content').innerHTML=this.renderHorarios(nId);
     this.showToast('📵 Data bloqueada!');
   },
 
-  desbloquearData(idx,nId){
-    const h=DB.getHorarios(nId)||{bloqueados:[]};
+  desbloquearData(idx,nId,profId){
+    const h=DB.getHorarios(nId,profId)||{bloqueados:[]};
     h.bloqueados.splice(idx,1);
-    DB.saveHorarios(nId,h);
+    DB.saveHorarios(nId,profId,h);
     document.getElementById('painel-content').innerHTML=this.renderHorarios(nId);
     this.showToast('✅ Data desbloqueada');
   },
@@ -1141,7 +1295,12 @@ const App = {
     document.querySelectorAll('.barber-card').forEach(c=>c.classList.remove('selected'));
     document.querySelector(`.barber-card[data-id="${id}"]`).classList.add('selected');
     document.getElementById('res-prof').textContent=this.selectedProfissional.nome;
-    this.refreshHorarios();
+    // cada profissional pode ter dias/horários diferentes — reseta data e horário escolhidos
+    this.selectedData=null;this.selectedHora=null;
+    document.getElementById('res-data').textContent='—';
+    document.getElementById('res-hora').textContent='—';
+    document.getElementById('horarios-section').style.display='none';
+    this.renderCalendar();
   },
 
   // CALENDAR
@@ -1170,7 +1329,11 @@ const App = {
 
   renderCalendar(){
     const wrap=document.getElementById('cal-wrap');if(!wrap)return;
-    const h=DB.getHorarios(this.currentNegocio.id)||{0:{on:false},1:{on:true},2:{on:true},3:{on:true},4:{on:true},5:{on:true},6:{on:true},bloqueados:[]};
+    if(!this.selectedProfissional){
+      wrap.innerHTML=`<div style="text-align:center;padding:24px 12px;color:var(--muted);font-size:13px;">👆 Escolha um profissional acima para ver os dias disponíveis</div>`;
+      return;
+    }
+    const h=DB.getHorarios(this.currentNegocio.id,this.selectedProfissional.id)||{0:{on:false},1:{on:true},2:{on:true},3:{on:true},4:{on:true},5:{on:true},6:{on:true},bloqueados:[]};
     const bloqueados=h.bloqueados||[];
     const now=new Date();
     const year=this.calYear,month=this.calMonth;
@@ -1194,6 +1357,7 @@ const App = {
       days+=`<button class="cal-day ${cls}" ${disabled?'disabled':`onclick="App.selectData('${ds}')"`}>${d}</button>`;
     }
     wrap.innerHTML=`
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">📅 Dias disponíveis de <strong style="color:var(--dark);">${this.selectedProfissional.nome}</strong></div>
       <div class="cal-head">
         <button class="cal-nav" onclick="App.prevMonth()">‹</button>
         <div class="cal-month">${mNames[month]} ${year}</div>
@@ -1229,7 +1393,7 @@ const App = {
     const grid=document.getElementById('time-grid');
     if(!section||!grid)return;
     section.style.display='block';
-    const h=DB.getHorarios(this.currentNegocio.id)||{};
+    const h=DB.getHorarios(this.currentNegocio.id,this.selectedProfissional.id)||{};
     const dow=new Date(this.selectedData+'T12:00:00').getDay();
     const dayConfig=h[dow]||{on:true,inicio:'08:00',fim:'18:00'};
     const duracao=this.selectedServico?this.selectedServico.duracao:30;
