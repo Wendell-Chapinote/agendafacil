@@ -230,6 +230,7 @@ const DB = {
   saveProfissional(p){const a=JSON.parse(localStorage.getItem('profissionais')||'[]');const i=a.findIndex(x=>x.id===p.id);if(i>=0)a[i]=p;else a.push(p);localStorage.setItem('profissionais',JSON.stringify(a))},
   deleteProfissional(id){localStorage.setItem('profissionais',JSON.stringify((JSON.parse(localStorage.getItem('profissionais')||'[]')).filter(p=>p.id!==id)))},
   getAgendamentos(nId){return(JSON.parse(localStorage.getItem('agendamentos')||'[]')).filter(a=>a.negocioId===nId)},
+  getAgendamentosByCliente(clienteId){return(JSON.parse(localStorage.getItem('agendamentos')||'[]')).filter(a=>a.clienteId===clienteId)},
   saveAgendamento(ag){const a=JSON.parse(localStorage.getItem('agendamentos')||'[]');const i=a.findIndex(x=>x.id===ag.id);if(i>=0)a[i]=ag;else a.push(ag);localStorage.setItem('agendamentos',JSON.stringify(a))},
   updateStatus(id,status){const a=JSON.parse(localStorage.getItem('agendamentos')||'[]');const i=a.findIndex(x=>x.id===id);if(i>=0){a[i].status=status;localStorage.setItem('agendamentos',JSON.stringify(a))}},
   getHorariosOcupados(nId,pId,data){return(JSON.parse(localStorage.getItem('agendamentos')||'[]')).filter(a=>a.negocioId===nId&&a.profissionalId===pId&&a.data===data&&a.status!=='cancelado').map(a=>a.hora)},
@@ -324,6 +325,7 @@ const App = {
     const parts=hash.split('/');
     if(parts[0]==='agendar'&&parts[1])this.showAgendarPage(parts[1]);
     else if(parts[0]==='cancelar')this.showCancelarPage(parts[1]||'');
+    else if(parts[0]==='meus-agendamentos')this.showMeusAgendamentos();
     else if(parts[0]==='painel')this.checkAuthAndShowPainel();
     else if(parts[0]==='login')this.showLogin();
     else if(parts[0]==='register')this.showRegister();
@@ -1225,9 +1227,17 @@ const App = {
               <div class="hero-sub">⭐ Agendamento online</div>
             </div>
           </div>
-          <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1;">
+          <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:5;">
             <div style="font-size:12px;color:rgba(255,255,255,0.6);">👤 ${clienteSession.nome}</div>
-            <button onclick="DB.clearClienteSession();App.showClienteLogin('${slug}')" style="font-size:11px;color:var(--gold);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;">Sair da conta</button>
+            <div style="position:relative;">
+              <button onclick="App.toggleClienteMenu()" id="cliente-menu-btn" style="font-size:11px;color:var(--gold);background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:5px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;">
+                Minha conta ▾
+              </button>
+              <div id="cliente-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:white;border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden;min-width:190px;z-index:20;">
+                <div onclick="App.navigate('meus-agendamentos')" style="padding:13px 16px;font-size:13px;font-weight:600;color:var(--dark);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);">📋 Meus agendamentos</div>
+                <div onclick="DB.clearClienteSession();App.showClienteLogin('${slug}')" style="padding:13px 16px;font-size:13px;font-weight:600;color:var(--red);cursor:pointer;display:flex;align-items:center;gap:8px;">🚪 Sair da conta</div>
+              </div>
+            </div>
           </div>
           <div class="hero-stats" style="margin-top:12px;">
             <div class="hero-stat"><div class="stat-val">${servicos.length}</div><div class="stat-lbl">Serviços</div></div>
@@ -1280,6 +1290,81 @@ const App = {
     </div>
     <div class="toast" id="toast"></div>`;
     this.renderCalendar();
+  },
+
+  toggleClienteMenu(){
+    const dd=document.getElementById('cliente-menu-dropdown');
+    if(!dd)return;
+    const isOpen=dd.style.display==='block';
+    dd.style.display=isOpen?'none':'block';
+  },
+
+  // MEUS AGENDAMENTOS (cliente)
+  showMeusAgendamentos(){
+    const clienteSession=DB.getClienteSession();
+    if(!clienteSession){this.navigate('');return}
+
+    const ags=DB.getAgendamentosByCliente(clienteSession.id).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
+    const todayStr=new Date().toISOString().split('T')[0];
+
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div style="background:var(--dark);padding:48px 20px 20px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+          <button onclick="history.back()" style="background:rgba(255,255,255,0.1);border:none;border-radius:8px;width:32px;height:32px;color:white;cursor:pointer;font-size:16px;">←</button>
+          <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:white;">Meus Agendamentos</div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);padding-left:44px;">👤 ${clienteSession.nome}</div>
+      </div>
+      <div style="padding:20px;padding-bottom:40px;" id="meus-ag-content">
+        ${this.renderMeusAgendamentosLista(ags,todayStr)}
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>`;
+  },
+
+  renderMeusAgendamentosLista(ags,todayStr){
+    if(!ags.length)return`<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Você ainda não tem agendamentos.<br>Acesse o link de uma barbearia para agendar!</div></div>`;
+
+    return ags.map(ag=>{
+      const negocio=DB.getNegocioById(ag.negocioId);
+      const servicos=negocio?DB.getServicos(negocio.id):[];
+      const profs=negocio?DB.getProfissionais(negocio.id):[];
+      const s=servicos.find(x=>x.id===ag.servicoId);
+      const p=profs.find(x=>x.id===ag.profissionalId);
+      const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      const isPast=ag.data<todayStr;
+      const podeCancel=!isPast&&ag.status!=='cancelado';
+      return`<div class="ag-card ${ag.status}">
+        <div class="ag-head">
+          <div class="ag-nome">🏪 ${negocio?negocio.nome:'Barbearia removida'}</div>
+          <div class="ag-status ${ag.status}">${ag.status}</div>
+        </div>
+        <div class="ag-info">
+          <span>✂️ ${s?s.nome:'-'} · R$${s?s.preco:'-'}</span>
+          <span>👤 ${p?p.nome:'-'}</span>
+          <span>📅 ${df} às ${ag.hora}</span>
+          ${isPast?'<span style="color:#bbb;">🕓 Agendamento já passou</span>':''}
+        </div>
+        ${podeCancel?`
+        <div class="ag-actions">
+          <button class="btn-sm btn-cancel-ag" onclick="App.cancelarMeuAgendamento('${ag.id}')">✕ Cancelar agendamento</button>
+          ${negocio?`<button class="btn-sm" style="background:transparent;border:1px solid var(--border);color:var(--muted);" onclick="App.navigate('agendar/${negocio.slug}')">🗓️ Agendar de novo</button>`:''}
+        </div>`:negocio&&ag.status!=='cancelado'?`
+        <div class="ag-actions">
+          <button class="btn-sm" style="background:transparent;border:1px solid var(--border);color:var(--muted);" onclick="App.navigate('agendar/${negocio.slug}')">🗓️ Agendar de novo</button>
+        </div>`:''}
+      </div>`;
+    }).join('');
+  },
+
+  cancelarMeuAgendamento(agId){
+    DB.updateStatus(agId,'cancelado');
+    const clienteSession=DB.getClienteSession();
+    const ags=DB.getAgendamentosByCliente(clienteSession.id).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
+    const todayStr=new Date().toISOString().split('T')[0];
+    document.getElementById('meus-ag-content').innerHTML=this.renderMeusAgendamentosLista(ags,todayStr);
+    this.showToast('✅ Agendamento cancelado!');
   },
 
   selectServico(id){
@@ -1554,6 +1639,13 @@ const App = {
 
 window.addEventListener('hashchange',()=>App.init());
 window.addEventListener('DOMContentLoaded',()=>App.init());
+document.addEventListener('click',(e)=>{
+  const dd=document.getElementById('cliente-menu-dropdown');
+  const btn=document.getElementById('cliente-menu-btn');
+  if(dd&&dd.style.display==='block'&&!dd.contains(e.target)&&e.target!==btn&&!btn.contains(e.target)){
+    dd.style.display='none';
+  }
+});
 </script>
 </body>
 </html>
