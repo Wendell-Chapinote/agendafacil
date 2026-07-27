@@ -379,6 +379,7 @@ const App = {
     else if(parts[0]==='painel')this.checkAuthAndShowPainel();
     else if(parts[0]==='login')this.showLogin();
     else if(parts[0]==='register')this.showRegister();
+    else if(parts[0]==='cliente')this.showClienteHome();
     else this.showHome();
   },
 
@@ -392,12 +393,51 @@ const App = {
         <div style="font-size:52px;margin-bottom:16px;">✂️</div>
         <div style="font-family:'Playfair Display',serif;font-size:32px;font-weight:900;color:white;margin-bottom:8px;">AgendaFácil</div>
         <div style="font-size:14px;color:var(--muted);margin-bottom:36px;line-height:1.6;">Agendamento online para<br>barbearias e salões</div>
-        <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:12px;">
-          <button class="btn-primary" onclick="App.navigate('login')" style="width:100%;margin-bottom:12px;">Entrar no meu painel</button>
-          <button class="btn-secondary" onclick="App.navigate('register')" style="width:100%;">Cadastrar meu comércio</button>
+        <div style="width:100%;max-width:320px;display:flex;flex-direction:column;gap:14px;">
+          <div style="font-size:11px;color:var(--gold);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:4px;">Escolha sua opção</div>
+          <button class="btn-primary" onclick="App.navigate('cliente')" style="width:100%;">✂️ Quero agendar</button>
+          <div style="position:relative;display:flex;align-items:center;gap:12px;margin:4px 0;">
+            <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+            <span style="font-size:11px;color:var(--muted);flex-shrink:0;">ou</span>
+            <div style="flex:1;height:1px;background:rgba(255,255,255,0.1);"></div>
+          </div>
+          <button style="width:100%;padding:16px;background:rgba(255,255,255,0.06);border:1.5px solid rgba(255,255,255,0.12);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:var(--white);cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:all .2s;" onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.06)'" onclick="App.navigate('login')">🔧 Sou barbeiro</button>
+          <div style="text-align:center;margin-top:4px;">
+            <span style="font-size:12px;color:var(--muted);">É profissional? </span>
+            <span onclick="App.navigate('register')" style="font-size:12px;color:var(--gold);font-weight:600;cursor:pointer;text-decoration:underline;">Cadastrar meu comércio</span>
+          </div>
         </div>
       </div>
     </div>`;
+  },
+
+  showClienteHome(){
+    const todos=JSON.parse(localStorage.getItem('negocios')||'[]');
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div style="background:var(--dark);padding:48px 20px 20px;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+          <button onclick="App.navigate('')" style="background:rgba(255,255,255,0.1);border:none;border-radius:8px;width:32px;height:32px;color:white;cursor:pointer;font-size:16px;">←</button>
+          <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:white;">Agendar horário</div>
+        </div>
+        <div style="font-size:12px;color:var(--muted);padding-left:44px;">Escolha uma barbearia para agendar</div>
+      </div>
+      <div style="padding:20px;padding-bottom:40px;">
+        ${todos.length?todos.map(n=>{
+          const logoSrc=n.logo?`<img src="${n.logo}" style="width:100%;height:100%;object-fit:cover;">`:'✂️';
+          return`
+          <div onclick="App.navigate('agendar/${n.slug}')" style="background:var(--white);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);display:flex;align-items:center;gap:14px;cursor:pointer;transition:all .15s;border:2px solid transparent;" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='transparent'">
+            <div style="width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--gold),var(--gold-light));display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;overflow:hidden;">${logoSrc}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:15px;font-weight:700;">${n.nome}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">clique para agendar →</div>
+            </div>
+          </div>`;
+        }).join('')
+        :`<div class="empty-state"><div class="empty-icon">🏪</div><div class="empty-text">Nenhuma barbearia cadastrada ainda.<br>Compartilhe o app com os profissionais da sua região!</div></div>`}
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>`;
   },
 
   doLoginDemo(){const u=DB.login('demo@agendafacil.com','123456');if(u){DB.setSession(u);this.showPainel(u)}},
