@@ -381,7 +381,11 @@ const DB = {
   },
   async getHorariosOcupados(negocioId,profId,data){
     const {data:rows}=await sb.rpc('horarios_ocupados',{p_negocio_id:negocioId,p_profissional_id:profId,p_data:data});
-    return (rows||[]).map(r=>(r.hora||'').substring(0,5));
+    return (rows||[]).map(r=>{
+      const [hh,mm]=(r.hora||'00:00:00').substring(0,5).split(':').map(Number);
+      const ini=hh*60+mm;
+      return {ini,fim:ini+(r.duracao||30)};
+    });
   },
 
   // ============================================
@@ -772,14 +776,20 @@ const App = {
           <div style="font-size:12px;color:var(--muted);">🍽️ Horário de almoço</div>
         </div>`);
       }else if(ocupado){
+        const statusColor=ocupado.ag.status==='confirmado'?'var(--green)':'var(--gold)';
         if(cursor<=ocupado.ini&&cursor+30>ocupado.ini){
-          const statusColor=ocupado.ag.status==='confirmado'?'var(--green)':'var(--gold)';
           linhas.push(`<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:white;border-radius:10px;margin-bottom:6px;border-left:4px solid ${statusColor};box-shadow:var(--shadow);">
             <div style="font-size:12px;font-weight:700;color:var(--dark);width:44px;flex-shrink:0;">${ocupado.ag.hora}</div>
             <div style="flex:1;min-width:0;">
               <div style="font-size:13px;font-weight:700;">${ocupado.ag.clienteNome}</div>
               <div style="font-size:11px;color:var(--muted);">✂️ ${ocupado.servico?ocupado.servico.nome:'-'} · ${ocupado.servico?ocupado.servico.duracao:30}min · ${ocupado.ag.status}</div>
             </div>
+          </div>`);
+        }else{
+          // continuação do mesmo atendimento — mostra faixa mais fina ao invés de sumir
+          linhas.push(`<div style="display:flex;align-items:center;gap:12px;padding:6px 14px;background:#fafafa;border-radius:10px;margin-bottom:6px;border-left:4px solid ${statusColor};opacity:0.55;">
+            <div style="font-size:11px;font-weight:600;color:var(--muted);width:44px;flex-shrink:0;">${horaLabel}</div>
+            <div style="font-size:11px;color:var(--muted);">↳ em atendimento</div>
           </div>`);
         }
       }else{
@@ -1762,7 +1772,10 @@ const App = {
     const slots=this.gerarSlots(dayConfig.inicio,dayConfig.fim,duracao,dayConfig.almoco);
     const ocupados=await DB.getHorariosOcupados(this.currentNegocio.id,this.selectedProfissional.id,this.selectedData);
     grid.innerHTML=slots.map(hora=>{
-      const busy=ocupados.includes(hora);
+      const [hh,mm]=hora.split(':').map(Number);
+      const slotIni=hh*60+mm;
+      const slotFim=slotIni+duracao;
+      const busy=ocupados.some(o=>slotIni<o.fim&&slotFim>o.ini);
       const sel=hora===this.selectedHora;
       return`<div class="time-slot ${busy?'busy':sel?'selected':''}" ${!busy?`onclick="App.selectHora('${hora}')"`:''}>${hora}</div>`;
     }).join('');
@@ -1790,7 +1803,11 @@ const App = {
 
     // checagem final de ocupação (evita conflito de dois clientes agendando ao mesmo tempo)
     const ocupadosFinal=await DB.getHorariosOcupados(this.currentNegocio.id,this.selectedProfissional.id,this.selectedData);
-    if(ocupadosFinal.includes(this.selectedHora)){
+    const [selH,selM]=this.selectedHora.split(':').map(Number);
+    const selIni=selH*60+selM;
+    const selFim=selIni+this.selectedServico.duracao;
+    const conflita=ocupadosFinal.some(o=>selIni<o.fim&&selFim>o.ini);
+    if(conflita){
       this.showToast('⚠️ Esse horário acabou de ser reservado. Escolha outro.');
       this.refreshHorarios();
       return;
