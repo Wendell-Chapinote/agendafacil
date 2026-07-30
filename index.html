@@ -1687,13 +1687,15 @@ const App = {
       const [aF,amF]=almoco.fim.split(':').map(Number);
       almocoIni=aI*60+amI;almocoFim=aF*60+amF;
     }
+    // sempre avança de 30 em 30 min, independente da duração do serviço —
+    // assim um horário livre aparece pra qualquer serviço que caiba nele
     while(cur+duracao<=end){
       const slotFim=cur+duracao;
       const conflitaComAlmoco=almocoIni!==null&&(cur<almocoFim&&slotFim>almocoIni);
       if(!conflitaComAlmoco){
         slots.push(`${String(Math.floor(cur/60)).padStart(2,'0')}:${String(cur%60).padStart(2,'0')}`);
       }
-      cur+=duracao||30;
+      cur+=30;
     }
     return slots;
   },
