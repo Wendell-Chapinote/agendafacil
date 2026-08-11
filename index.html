@@ -276,6 +276,9 @@ const DB = {
     await sb.from('servicos').insert({negocio_id:negocioRow.id,nome:'Corte Masculino',duracao:30,preco:45});
     const {data:profRow}=await sb.from('profissionais').insert({negocio_id:negocioRow.id,nome,foto:''}).select().single();
     if(profRow)await sb.from('horarios').insert({negocio_id:negocioRow.id,profissional_id:profRow.id,dados:HORARIO_PADRAO});
+    // cria período de teste grátis de 14 dias
+    const trialEnd=new Date();trialEnd.setDate(trialEnd.getDate()+14);
+    await sb.from('assinaturas').insert({negocio_id:negocioRow.id,status:'trial',plano:null,proximo_vencimento:trialEnd.toISOString().split('T')[0]});
     return{negocio:mapNegocio(negocioRow)};
   },
 
@@ -294,6 +297,27 @@ const DB = {
   },
 
   // ============================================
+  // ASSINATURA (mensalidade)
+  // ============================================
+  async getAssinatura(negocioId){
+    const {data}=await sb.from('assinaturas').select('*').eq('negocio_id',negocioId).maybeSingle();
+    if(!data)return null;
+    return{status:data.status,plano:data.plano,proximoVencimento:data.proximo_vencimento};
+  },
+
+  async iniciarCheckout(negocioId,plano){
+    try{
+      const resp=await fetch('/api/create-checkout-session',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({negocioId,plano})
+      });
+      const data=await resp.json();
+      if(!resp.ok||!data.url)return{error:data.error||'Erro ao iniciar pagamento'};
+      return{url:data.url};
+    }catch(e){return{error:'Erro de conexão: '+e.message}}
+  },
+
+
   // AUTH — CLIENTE (conta global)
   // ============================================
   async registerCliente(nome,email,tel,senha){
@@ -599,6 +623,17 @@ const App = {
   // ============================================
   async showPainel(dono){
     const negocio=dono.negocio;
+
+    // checa status da assinatura antes de liberar o painel
+    const assinatura=await DB.getAssinatura(negocio.id);
+    const hoje=new Date().toISOString().split('T')[0];
+    const venceu=assinatura&&assinatura.proximoVencimento&&assinatura.proximoVencimento<hoje;
+    const bloqueado=!assinatura||assinatura.status==='cancelado'||assinatura.status==='atrasado'||(assinatura.status==='trial'&&venceu);
+    if(bloqueado){
+      this.showPaywall(dono,assinatura);
+      return;
+    }
+
     await this.loadCache(negocio.id,negocio);
     document.getElementById('app').innerHTML=`
     <div class="app-wrap">
@@ -607,6 +642,11 @@ const App = {
         <button style="position:relative;z-index:999;cursor:pointer;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-family:'DM Sans',sans-serif;" onclick="App.logoutDono()">Sair</button>
       </div>
       <div style="background:var(--dark);padding:0 20px 16px;">
+        ${assinatura&&assinatura.status==='trial'?`
+        <div style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--blue);display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          🎁 Teste grátis até <strong>${new Date(assinatura.proximoVencimento+'T12:00:00').toLocaleDateString('pt-BR')}</strong>
+          <span onclick="App.showPaywall(${JSON.stringify(dono).replace(/"/g,'&quot;')},${JSON.stringify(assinatura).replace(/"/g,'&quot;')})" style="cursor:pointer;margin-left:auto;background:rgba(59,130,246,0.2);padding:3px 8px;border-radius:6px;">Assinar agora</span>
+        </div>`:''}
         <div style="background:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.3);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:8px;">
           🔗 Link: <strong>…/agendar/${negocio.slug}</strong>
           <span onclick="App.copyLink('${negocio.slug}')" style="cursor:pointer;margin-left:auto;background:rgba(212,175,55,0.2);padding:3px 8px;border-radius:6px;">Copiar</span>
@@ -624,6 +664,60 @@ const App = {
       <div class="painel-content" id="painel-content">${this.renderAgenda()}</div>
     </div>
     <div class="toast" id="toast"></div>`;
+  },
+
+  // ---- PAYWALL (tela de planos) ----
+  showPaywall(dono,assinatura){
+    const negocio=dono.negocio;
+    const motivo=!assinatura?'Complete sua assinatura para acessar o painel':
+      assinatura.status==='atrasado'?'⚠️ Seu último pagamento não foi aprovado':
+      assinatura.status==='cancelado'?'Sua assinatura foi cancelada':
+      'Seu período de teste grátis acabou';
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div style="background:var(--dark);padding:48px 24px 32px;text-align:center;">
+        <div style="font-size:44px;margin-bottom:12px;">${assinatura&&assinatura.status==='atrasado'?'⚠️':'🔒'}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:white;margin-bottom:6px;">${negocio.nome}</div>
+        <div style="font-size:13px;color:var(--muted);">${motivo}</div>
+        <button style="margin-top:16px;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-family:'DM Sans',sans-serif;cursor:pointer;" onclick="App.logoutDono()">Sair</button>
+      </div>
+      <div style="padding:24px 20px 40px;">
+        <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;text-align:center;margin-bottom:20px;">Escolha seu plano</div>
+
+        <div style="background:white;border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:14px;border:2px solid var(--border);">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">Básico</div>
+          <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;margin-bottom:4px;">R$79<span style="font-size:14px;color:var(--muted);font-weight:400;">/mês</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Agendamento completo para até 1 profissional</div>
+          <button class="btn-primary" onclick="App.assinarPlano('${negocio.id}','basico',this)">Assinar Básico</button>
+        </div>
+
+        <div style="background:white;border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);border:2px solid var(--gold);position:relative;">
+          <div style="position:absolute;top:-10px;right:16px;background:var(--gold);color:var(--dark);font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;">POPULAR</div>
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">Pro</div>
+          <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;margin-bottom:4px;">R$149<span style="font-size:14px;color:var(--muted);font-weight:400;">/mês</span></div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Profissionais ilimitados + relatórios</div>
+          <button class="btn-primary" onclick="App.assinarPlano('${negocio.id}','pro',this)">Assinar Pro</button>
+        </div>
+
+        <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--muted);">
+          🔒 Pagamento processado com segurança pelo Stripe
+        </div>
+      </div>
+    </div>
+    <div class="toast" id="toast"></div>`;
+  },
+
+  async assinarPlano(negocioId,plano,btnEl){
+    btnEl.textContent='Redirecionando...';
+    btnEl.disabled=true;
+    const result=await DB.iniciarCheckout(negocioId,plano);
+    if(result.error){
+      this.showToast('⚠️ '+result.error);
+      btnEl.textContent=plano==='basico'?'Assinar Básico':'Assinar Pro';
+      btnEl.disabled=false;
+      return;
+    }
+    window.location.href=result.url;
   },
 
   async logoutDono(){ await DB.logout(); this.navigate(''); location.reload(); },
