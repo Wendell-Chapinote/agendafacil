@@ -118,6 +118,20 @@ module.exports = async function handler(req, res) {
         }
         break;
       }
+      case 'customer.subscription.updated': {
+        const sub = event.data.object;
+        const camposUpd = { updated_at: new Date().toISOString() };
+        if (sub.cancel_at_period_end) {
+          camposUpd.status = 'cancelamento_agendado';
+        } else if (sub.status === 'active') {
+          camposUpd.status = 'ativo';
+        }
+        if (sub.current_period_end) {
+          camposUpd.proximo_vencimento = new Date(sub.current_period_end * 1000).toISOString().split('T')[0];
+        }
+        await atualizarAssinatura('stripe_subscription_id', sub.id, camposUpd);
+        break;
+      }
       case 'customer.subscription.deleted': {
         const sub = event.data.object;
         await atualizarAssinatura('stripe_subscription_id', sub.id, {
