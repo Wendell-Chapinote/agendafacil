@@ -302,7 +302,7 @@ const DB = {
   async getAssinatura(negocioId){
     const {data}=await sb.from('assinaturas').select('*').eq('negocio_id',negocioId).maybeSingle();
     if(!data)return null;
-    return{status:data.status,plano:data.plano,proximoVencimento:data.proximo_vencimento};
+    return{status:data.status,plano:data.plano,proximoVencimento:data.proximo_vencimento,temAssinaturaStripe:!!data.stripe_subscription_id};
   },
 
   async iniciarCheckout(negocioId,plano){
@@ -314,6 +314,21 @@ const DB = {
       const data=await resp.json();
       if(!resp.ok||!data.url)return{error:data.error||'Erro ao iniciar pagamento'};
       return{url:data.url};
+    }catch(e){return{error:'Erro de conexão: '+e.message}}
+  },
+
+  async cancelarAssinatura(negocioId,reativar){
+    try{
+      const {data:{session}}=await sb.auth.getSession();
+      if(!session)return{error:'Sessão expirada, faça login novamente.'};
+      const resp=await fetch('/api/cancel-subscription',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+        body:JSON.stringify({negocioId,reativar:!!reativar})
+      });
+      const data=await resp.json();
+      if(!resp.ok)return{error:data.error||'Erro ao processar solicitação'};
+      return{ok:true};
     }catch(e){return{error:'Erro de conexão: '+e.message}}
   },
 
@@ -645,7 +660,7 @@ const App = {
         ${assinatura&&assinatura.status==='trial'?`
         <div style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.3);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--blue);display:flex;align-items:center;gap:8px;margin-bottom:8px;">
           🎁 Teste grátis até <strong>${new Date(assinatura.proximoVencimento+'T12:00:00').toLocaleDateString('pt-BR')}</strong>
-          <span onclick="App.showPaywall(${JSON.stringify(dono).replace(/"/g,'&quot;')},${JSON.stringify(assinatura).replace(/"/g,'&quot;')})" style="cursor:pointer;margin-left:auto;background:rgba(59,130,246,0.2);padding:3px 8px;border-radius:6px;">Assinar agora</span>
+          <span onclick="App.irParaPaywall('${negocio.id}')" style="cursor:pointer;margin-left:auto;background:rgba(59,130,246,0.2);padding:3px 8px;border-radius:6px;">Assinar agora</span>
         </div>`:''}
         <div style="background:rgba(212,175,55,0.1);border:1px solid rgba(212,175,55,0.3);border-radius:10px;padding:10px 14px;font-size:12px;color:var(--gold);display:flex;align-items:center;gap:8px;">
           🔗 Link: <strong>…/agendar/${negocio.slug}</strong>
@@ -653,13 +668,14 @@ const App = {
         </div>
       </div>
       <div class="tabs">
-        <div class="tab active" onclick="App.switchTab('agenda',this)">📅 Agenda</div>
-        <div class="tab" onclick="App.switchTab('historico',this)">🔍 Histórico</div>
-        <div class="tab" onclick="App.switchTab('servicos',this)">✂️ Serviços</div>
-        <div class="tab" onclick="App.switchTab('profissionais',this)">👤 Equipe</div>
-        <div class="tab" onclick="App.switchTab('horarios',this)">🕐 Horários</div>
-        <div class="tab" onclick="App.switchTab('bloqueados',this)">🚫 Bloqueios</div>
-        <div class="tab" onclick="App.switchTab('config',this)">⚙️ Config</div>
+        <div class="tab active" data-tab="agenda" onclick="App.switchTab('agenda',this)">📅 Agenda</div>
+        <div class="tab" data-tab="historico" onclick="App.switchTab('historico',this)">🔍 Histórico</div>
+        <div class="tab" data-tab="servicos" onclick="App.switchTab('servicos',this)">✂️ Serviços</div>
+        <div class="tab" data-tab="profissionais" onclick="App.switchTab('profissionais',this)">👤 Equipe</div>
+        <div class="tab" data-tab="horarios" onclick="App.switchTab('horarios',this)">🕐 Horários</div>
+        <div class="tab" data-tab="bloqueados" onclick="App.switchTab('bloqueados',this)">🚫 Bloqueios</div>
+        <div class="tab" data-tab="assinatura" onclick="App.switchTab('assinatura',this)">💳 Assinatura</div>
+        <div class="tab" data-tab="config" onclick="App.switchTab('config',this)">⚙️ Config</div>
       </div>
       <div class="painel-content" id="painel-content">${this.renderAgenda()}</div>
     </div>
@@ -746,6 +762,7 @@ const App = {
     else if(tab==='profissionais')c.innerHTML=this.renderProfissionais();
     else if(tab==='horarios')c.innerHTML=this.renderHorarios();
     else if(tab==='bloqueados')c.innerHTML=this.renderBloqueados();
+    else if(tab==='assinatura')c.innerHTML=await this.renderAssinatura();
     else if(tab==='config')c.innerHTML=this.renderConfig();
   },
 
@@ -1305,6 +1322,82 @@ const App = {
     this.showToast('✅ Data desbloqueada');
   },
 
+  // ---- ASSINATURA ----
+  async renderAssinatura(){
+    const negocio=this.cache.negocio;
+    const assinatura=await DB.getAssinatura(negocio.id);
+    const PLANOS={basico:{nome:'Básico',preco:'R$30/mês'},pro:{nome:'Pro',preco:'R$50/mês'}};
+
+    if(!assinatura){
+      return`<div class="empty-state"><div class="empty-icon">💳</div><div class="empty-text">Nenhuma informação de assinatura encontrada.</div></div>`;
+    }
+
+    const statusInfo={
+      trial:{label:'🎁 Período de teste grátis',color:'var(--blue)',bg:'rgba(59,130,246,0.1)'},
+      ativo:{label:'✅ Assinatura ativa',color:'var(--green)',bg:'rgba(16,185,129,0.1)'},
+      cancelamento_agendado:{label:'⏳ Cancelamento agendado',color:'var(--gold)',bg:'rgba(212,175,55,0.1)'},
+      atrasado:{label:'⚠️ Pagamento atrasado',color:'var(--red)',bg:'rgba(239,68,68,0.1)'},
+      cancelado:{label:'❌ Assinatura cancelada',color:'var(--muted)',bg:'var(--gray)'},
+    }[assinatura.status]||{label:assinatura.status,color:'var(--muted)',bg:'var(--gray)'};
+
+    const planoInfo=assinatura.plano?PLANOS[assinatura.plano]:null;
+    const dataFmt=assinatura.proximoVencimento?new Date(assinatura.proximoVencimento+'T12:00:00').toLocaleDateString('pt-BR',{day:'numeric',month:'long',year:'numeric'}):'-';
+
+    let acaoHtml='';
+    if(assinatura.status==='ativo'&&assinatura.temAssinaturaStripe){
+      acaoHtml=`
+        <button class="btn-sm" style="width:100%;padding:12px;background:transparent;border:2px solid var(--red);color:var(--red);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;" onclick="App.cancelarMinhaAssinatura('${negocio.id}',this)">
+          Cancelar assinatura
+        </button>
+        <div style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px;">Você continua com acesso total até ${dataFmt}</div>`;
+    }else if(assinatura.status==='cancelamento_agendado'){
+      acaoHtml=`
+        <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:14px;font-size:12px;color:#92400e;margin-bottom:12px;">
+          Sua assinatura foi cancelada e continuará ativa até <strong>${dataFmt}</strong>. Depois disso, o acesso será bloqueado.
+        </div>
+        <button class="btn-primary" onclick="App.reativarMinhaAssinatura('${negocio.id}',this)">↩️ Reativar assinatura</button>`;
+    }else if(assinatura.status==='trial'||assinatura.status==='atrasado'||assinatura.status==='cancelado'){
+      acaoHtml=`<button class="btn-primary" onclick="App.irParaPaywall('${negocio.id}')">Ver planos disponíveis</button>`;
+    }
+
+    return`
+      <div class="add-form">
+        <div class="add-form-title">💳 Sua assinatura</div>
+        <div style="background:${statusInfo.bg};border-radius:12px;padding:14px;margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:700;color:${statusInfo.color};">${statusInfo.label}</div>
+        </div>
+        <div class="summary-row" style="border-bottom:1px solid var(--border);"><span class="summary-lbl" style="color:var(--muted);">Plano</span><span style="font-weight:600;">${planoInfo?planoInfo.nome+' — '+planoInfo.preco:'Nenhum (teste grátis)'}</span></div>
+        <div class="summary-row" style="border-bottom:none;"><span class="summary-lbl" style="color:var(--muted);">${assinatura.status==='cancelamento_agendado'?'Acesso até':'Próxima cobrança'}</span><span style="font-weight:600;">${dataFmt}</span></div>
+      </div>
+      <div class="add-form">
+        ${acaoHtml}
+      </div>`;
+  },
+
+  async irParaPaywall(negocioId){
+    const dono=await DB.getDonoAtual();
+    if(!dono){this.navigate('login');return}
+    const assinatura=await DB.getAssinatura(negocioId);
+    this.showPaywall(dono,assinatura);
+  },
+
+  async cancelarMinhaAssinatura(negocioId,btnEl){
+    if(!confirm('Tem certeza que quer cancelar sua assinatura? Você continua com acesso até o fim do período já pago.'))return;
+    btnEl.textContent='Cancelando...';btnEl.disabled=true;
+    const result=await DB.cancelarAssinatura(negocioId,false);
+    if(result.error){this.showToast('⚠️ '+result.error);btnEl.textContent='Cancelar assinatura';btnEl.disabled=false;return}
+    this.showToast('✅ Assinatura cancelada. Acesso continua até o fim do período.');
+    document.getElementById('painel-content').innerHTML=await this.renderAssinatura();
+  },
+
+  async reativarMinhaAssinatura(negocioId,btnEl){
+    btnEl.textContent='Reativando...';btnEl.disabled=true;
+    const result=await DB.cancelarAssinatura(negocioId,true);
+    if(result.error){this.showToast('⚠️ '+result.error);btnEl.textContent='↩️ Reativar assinatura';btnEl.disabled=false;return}
+    this.showToast('✅ Assinatura reativada!');
+    document.getElementById('painel-content').innerHTML=await this.renderAssinatura();
+  },
+
   // ---- CONFIG ----
   renderConfig(){
     const negocio=this.cache.negocio;
@@ -1366,7 +1459,7 @@ const App = {
       this.cache.negocio.logo=ev.target.result;
       const dono=await DB.getDonoAtual();
       await this.showPainel(dono);
-      setTimeout(()=>{const tabs=document.querySelectorAll('.tab');const configTab=tabs[tabs.length-1];this.switchTab('config',configTab)},100);
+      setTimeout(()=>{const configTab=document.querySelector('.tab[data-tab="config"]');this.switchTab('config',configTab)},100);
       this.showToast('✅ Logo atualizado!');
     };
     reader.readAsDataURL(file);
@@ -1380,7 +1473,7 @@ const App = {
       this.cache.negocio.capa=ev.target.result;
       const dono=await DB.getDonoAtual();
       await this.showPainel(dono);
-      setTimeout(()=>{const tabs=document.querySelectorAll('.tab');const configTab=tabs[tabs.length-1];this.switchTab('config',configTab)},100);
+      setTimeout(()=>{const configTab=document.querySelector('.tab[data-tab="config"]');this.switchTab('config',configTab)},100);
       this.showToast('✅ Capa atualizada!');
     };
     reader.readAsDataURL(file);
