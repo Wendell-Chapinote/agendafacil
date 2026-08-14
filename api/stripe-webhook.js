@@ -35,6 +35,11 @@ function verificarAssinaturaStripe(payload, sigHeader, secret) {
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
+const PRICE_TO_PLANO = {
+  'price_1U32viDGnB6UpcSglVWqGtyg': 'basico',
+  'price_1U32wDDGnB6UpcSg2anvpXIn': 'pro',
+};
+
 async function atualizarAssinatura(campoFiltro, valorFiltro, campos) {
   const url = `${SUPABASE_URL}/rest/v1/assinaturas?${campoFiltro}=eq.${valorFiltro}`;
   const resp = await fetch(url, {
@@ -128,6 +133,11 @@ module.exports = async function handler(req, res) {
         }
         if (sub.current_period_end) {
           camposUpd.proximo_vencimento = new Date(sub.current_period_end * 1000).toISOString().split('T')[0];
+        }
+        // detecta automaticamente troca de plano (upgrade imediato ou downgrade agendado que acabou de entrar em vigor)
+        const precoAtualId = sub.items && sub.items.data && sub.items.data[0] && sub.items.data[0].price && sub.items.data[0].price.id;
+        if (precoAtualId && PRICE_TO_PLANO[precoAtualId]) {
+          camposUpd.plano = PRICE_TO_PLANO[precoAtualId];
         }
         await atualizarAssinatura('stripe_subscription_id', sub.id, camposUpd);
         break;
