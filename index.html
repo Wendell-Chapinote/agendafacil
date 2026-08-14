@@ -332,6 +332,21 @@ const DB = {
     }catch(e){return{error:'Erro de conexão: '+e.message}}
   },
 
+  async trocarPlano(negocioId,novoPlano){
+    try{
+      const {data:{session}}=await sb.auth.getSession();
+      if(!session)return{error:'Sessão expirada, faça login novamente.'};
+      const resp=await fetch('/api/change-plan',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+        body:JSON.stringify({negocioId,novoPlano})
+      });
+      const data=await resp.json();
+      if(!resp.ok)return{error:data.error||'Erro ao processar solicitação'};
+      return data;
+    }catch(e){return{error:'Erro de conexão: '+e.message}}
+  },
+
 
   // AUTH — CLIENTE (conta global)
   // ============================================
@@ -1360,6 +1375,26 @@ const App = {
       acaoHtml=`<button class="btn-primary" onclick="App.irParaPaywall('${negocio.id}')">Ver planos disponíveis</button>`;
     }
 
+    // troca de plano — só faz sentido com assinatura paga e ativa
+    let trocaPlanoHtml='';
+    if(assinatura.status==='ativo'&&assinatura.temAssinaturaStripe&&assinatura.plano){
+      if(assinatura.plano==='basico'){
+        trocaPlanoHtml=`
+        <div class="add-form">
+          <div class="add-form-title">⬆️ Fazer upgrade para o Pro</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Passa a valer na hora. Você paga só a diferença proporcional aos dias restantes deste mês — sem cobrar o valor cheio de novo.</div>
+          <button class="btn-primary" onclick="App.trocarMeuPlano('${negocio.id}','pro',this)">Fazer upgrade para Pro — R$50/mês</button>
+        </div>`;
+      }else if(assinatura.plano==='pro'){
+        trocaPlanoHtml=`
+        <div class="add-form">
+          <div class="add-form-title">⬇️ Mudar para o Básico</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Você continua com os recursos Pro até <strong>${dataFmt}</strong> (já pago). A partir daí, passa a cobrar R$30/mês automaticamente — sem estorno, sem cobrança dobrada.</div>
+          <button style="width:100%;padding:12px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;" onclick="App.trocarMeuPlano('${negocio.id}','basico',this)">Mudar para Básico — R$30/mês</button>
+        </div>`;
+      }
+    }
+
     return`
       <div class="add-form">
         <div class="add-form-title">💳 Sua assinatura</div>
@@ -1369,9 +1404,27 @@ const App = {
         <div class="summary-row" style="border-bottom:1px solid var(--border);"><span class="summary-lbl" style="color:var(--muted);">Plano</span><span style="font-weight:600;">${planoInfo?planoInfo.nome+' — '+planoInfo.preco:'Nenhum (teste grátis)'}</span></div>
         <div class="summary-row" style="border-bottom:none;"><span class="summary-lbl" style="color:var(--muted);">${assinatura.status==='cancelamento_agendado'?'Acesso até':'Próxima cobrança'}</span><span style="font-weight:600;">${dataFmt}</span></div>
       </div>
+      ${trocaPlanoHtml}
       <div class="add-form">
         ${acaoHtml}
       </div>`;
+  },
+
+  async trocarMeuPlano(negocioId,novoPlano,btnEl){
+    const mensagem=novoPlano==='pro'
+      ?'Fazer upgrade para o Pro agora? Você vai pagar a diferença proporcional aos dias restantes deste mês e já terá acesso ao Pro imediatamente.'
+      :'Mudar para o Básico? Você continua com os recursos Pro até o fim do período já pago — a mudança só passa a valer na próxima cobrança, sem estorno.';
+    if(!confirm(mensagem))return;
+    const textoOriginal=btnEl.textContent;
+    btnEl.textContent='Processando...';btnEl.disabled=true;
+    const result=await DB.trocarPlano(negocioId,novoPlano);
+    if(result.error){this.showToast('⚠️ '+result.error);btnEl.textContent=textoOriginal;btnEl.disabled=false;return}
+    if(result.tipo==='upgrade'){
+      this.showToast('✅ Upgrade feito! Você já tem acesso ao Pro.');
+    }else{
+      this.showToast('✅ Mudança agendada! Vale a partir do fim do período atual.');
+    }
+    document.getElementById('painel-content').innerHTML=await this.renderAssinatura();
   },
 
   async irParaPaywall(negocioId){
