@@ -40,6 +40,27 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ error: 'Nenhuma assinatura ativa encontrada para cancelar' });
     }
 
+    // Se essa assinatura estiver sob controle de um "agendamento de troca de
+    // plano" (subscription schedule, criado por um downgrade pendente), o
+    // Stripe não deixa mexer direto no cancelamento — precisa liberar esse
+    // agendamento antes, o que devolve a assinatura ao modo normal mantendo
+    // o plano/preço atual dela intactos.
+    const subResp = await fetch(`https://api.stripe.com/v1/subscriptions/${subId}`, {
+      headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` },
+    });
+    const subData = await subResp.json();
+    if (subResp.ok && subData.schedule) {
+      const releaseResp = await fetch(`https://api.stripe.com/v1/subscription_schedules/${subData.schedule}/release`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` },
+      });
+      if (!releaseResp.ok) {
+        const releaseErr = await releaseResp.json();
+        console.error('Erro ao liberar schedule:', releaseErr);
+        return res.status(400).json({ error: 'Não foi possível liberar o agendamento de troca de plano pendente. Tente novamente em instantes.' });
+      }
+    }
+
     const params = new URLSearchParams();
     params.append('cancel_at_period_end', reativar ? 'false' : 'true');
 
