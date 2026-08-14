@@ -106,10 +106,8 @@ module.exports = async function handler(req, res) {
       params.append('phases[0][start_date]', faseAtual.start_date);
       params.append('phases[0][end_date]', faseAtual.end_date);
       params.append('phases[0][items][0][price]', faseAtual.items[0].price);
-      // fase 2: passa a cobrar o novo plano a partir dali, indefinidamente
+      // fase 2: passa a cobrar o novo plano a partir dali, em diante (sem fim definido)
       params.append('phases[1][items][0][price]', novoPriceId);
-      params.append('phases[1][iterations]', '1');
-
       await stripeFetch(`/subscription_schedules/${scheduleId}`, 'POST', params);
 
       return res.status(200).json({ ok: true, tipo: 'downgrade', vigorApartirDe: faseAtual.end_date });
