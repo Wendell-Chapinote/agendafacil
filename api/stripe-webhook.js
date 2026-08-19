@@ -20,7 +20,7 @@ function getRawBody(req) {
 }
 
 function verificarAssinaturaStripe(payload, sigHeader, secret) {
-  if (!sigHeader) return false;
+  if (!sigHeader || !secret) return false;
   const parts = sigHeader.split(',').reduce((acc, part) => {
     const [k, v] = part.split('=');
     acc[k] = v;
@@ -29,7 +29,16 @@ function verificarAssinaturaStripe(payload, sigHeader, secret) {
   if (!parts.t || !parts.v1) return false;
   const signedPayload = `${parts.t}.${payload}`;
   const expected = crypto.createHmac('sha256', secret).update(signedPayload, 'utf8').digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1));
+  const expectedBuf = Buffer.from(expected, 'utf8');
+  const receivedBuf = Buffer.from(parts.v1, 'utf8');
+  // timingSafeEqual exige buffers do mesmo tamanho — uma assinatura malformada
+  // ou de tamanho diferente deve ser tratada como inválida, não travar a função
+  if (expectedBuf.length !== receivedBuf.length) return false;
+  try {
+    return crypto.timingSafeEqual(expectedBuf, receivedBuf);
+  } catch (e) {
+    return false;
+  }
 }
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
