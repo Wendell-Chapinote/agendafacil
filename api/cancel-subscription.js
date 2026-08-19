@@ -9,9 +9,26 @@
 const SUPABASE_URL = 'https://fsgyltsicqthxqoulufd.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_5WVdzdHJKBtcpOrUhcxraQ_XEsOZ_b2';
 
+// Só aceita chamadas vindas do próprio site (produção ou previews do Vercel)
+function origemPermitida(req) {
+  const origin = req.headers.origin;
+  if (!origin) return false;
+  if (origin === `https://${req.headers.host}`) return true;
+  try {
+    const host = new URL(origin).hostname;
+    return host.endsWith('.vercel.app');
+  } catch (e) {
+    return false;
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
+  }
+
+  if (!origemPermitida(req)) {
+    return res.status(403).json({ error: 'Origem não autorizada' });
   }
 
   const { negocioId, reativar } = req.body || {};
