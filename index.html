@@ -269,14 +269,18 @@ const DB = {
     if(existing)return{error:'Link já em uso, escolha outro'};
     const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,role:'dono'}}});
     if(signErr)return{error:signErr.message.includes('registered')?'E-mail já cadastrado':signErr.message};
-    if(!signData.session){return{error:'Verifique seu e-mail para confirmar o cadastro.'}}
-    const userId=signData.user.id;
+    if(!signData.session){return{precisaConfirmarEmail:true}}
+    return await this.criarInfraestruturaNegocio(signData.user.id,nome,slug,nomeBarbearia);
+  },
+
+  // Cria negócio + serviço padrão + profissional + horários + trial de 14 dias.
+  // Reutilizado tanto no cadastro normal quanto no primeiro login via Google.
+  async criarInfraestruturaNegocio(userId,nome,slug,nomeBarbearia){
     const {data:negocioRow,error:negErr}=await sb.from('negocios').insert({dono_id:userId,nome:nomeBarbearia,slug,telefone:'',logo:'',capa:''}).select().single();
-    if(negErr)return{error:'Erro ao criar barbearia: '+negErr.message};
+    if(negErr)return{error:negErr.message.includes('duplicate')?'Link já em uso, escolha outro':'Erro ao criar barbearia: '+negErr.message};
     await sb.from('servicos').insert({negocio_id:negocioRow.id,nome:'Corte Masculino',duracao:30,preco:45});
     const {data:profRow}=await sb.from('profissionais').insert({negocio_id:negocioRow.id,nome,foto:''}).select().single();
     if(profRow)await sb.from('horarios').insert({negocio_id:negocioRow.id,profissional_id:profRow.id,dados:HORARIO_PADRAO});
-    // cria período de teste grátis de 14 dias
     const trialEnd=new Date();trialEnd.setDate(trialEnd.getDate()+14);
     await sb.from('assinaturas').insert({negocio_id:negocioRow.id,status:'trial',plano:null,proximo_vencimento:trialEnd.toISOString().split('T')[0]});
     return{negocio:mapNegocio(negocioRow)};
@@ -284,8 +288,16 @@ const DB = {
 
   async loginDono(email,senha){
     const {data,error}=await sb.auth.signInWithPassword({email,password:senha});
-    if(error)return{error:'E-mail ou senha incorretos.'};
+    if(error)return{error:error.message.includes('Email not confirmed')?'Confirme seu e-mail antes de entrar — verifique sua caixa de entrada.':'E-mail ou senha incorretos.'};
     return{user:data.user};
+  },
+
+  async signInWithGoogle(intent){
+    // intent: 'dono' ou 'cliente' — lembra qual fluxo retomar depois do Google redirecionar de volta
+    const redirectTo=`${location.origin}${location.pathname}?oauth_intent=${intent}`;
+    const {error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo}});
+    if(error)return{error:error.message};
+    return{ok:true};
   },
 
   async getDonoAtual(){
@@ -353,8 +365,11 @@ const DB = {
   async registerCliente(nome,email,tel,senha){
     const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,role:'cliente'}}});
     if(signErr)return{error:signErr.message.includes('registered')?'E-mail já cadastrado':signErr.message};
-    if(!signData.session){return{error:'Verifique seu e-mail para confirmar o cadastro.'}}
-    const userId=signData.user.id;
+    if(!signData.session){return{precisaConfirmarEmail:true}}
+    return await this.criarPerfilCliente(signData.user.id,nome,email,tel);
+  },
+
+  async criarPerfilCliente(userId,nome,email,tel){
     const {data:clienteRow,error:cErr}=await sb.from('clientes').insert({id:userId,nome,email,telefone:tel}).select().single();
     if(cErr)return{error:'Erro ao criar perfil: '+cErr.message};
     return{cliente:mapCliente(clienteRow)};
@@ -362,7 +377,7 @@ const DB = {
 
   async loginCliente(email,senha){
     const {data,error}=await sb.auth.signInWithPassword({email,password:senha});
-    if(error)return{error:'E-mail ou senha incorretos.'};
+    if(error)return{error:error.message.includes('Email not confirmed')?'Confirme seu e-mail antes de entrar — verifique sua caixa de entrada.':'E-mail ou senha incorretos.'};
     const {data:clienteRow}=await sb.from('clientes').select('*').eq('id',data.user.id).maybeSingle();
     if(!clienteRow){await sb.auth.signOut();return{error:'Esta conta não é de cliente.'}}
     return{cliente:mapCliente(clienteRow)};
@@ -498,9 +513,37 @@ const DB = {
 };
 </script>
 <script>
+
+// Protege contra XSS: converte caracteres perigosos de HTML em entidades seguras
+// antes de inserir qualquer dado digitado por usuários na tela.
+function esc(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ============================================
 // APP
 // ============================================
+// Limite de tamanho para fotos (evita sobrecarregar o banco com arquivos gigantes)
+const MAX_FOTO_MB = 2;
+function arquivoValido(file, showToastFn) {
+  if (!file) return false;
+  if (!file.type || !file.type.startsWith('image/')) {
+    showToastFn('⚠️ Envie apenas arquivos de imagem');
+    return false;
+  }
+  if (file.size > MAX_FOTO_MB * 1024 * 1024) {
+    showToastFn(`⚠️ Imagem muito grande — máximo ${MAX_FOTO_MB}MB`);
+    return false;
+  }
+  return true;
+}
+
 const App = {
   currentNegocio:null,currentSlug:null,
   selectedServico:null,selectedProfissional:null,selectedData:null,selectedHora:null,
@@ -508,6 +551,16 @@ const App = {
   cache:{negocioId:null,negocio:null,servicos:[],profissionais:[],agendamentos:[],horarios:{},bloqueios:[]},
 
   async init(){
+    // Retorno do login com Google: verifica se precisa completar o cadastro
+    // (Google só nos dá nome e e-mail — telefone ou nome da barbearia
+    // precisam ser preenchidos na primeira vez)
+    const oauthIntent=new URLSearchParams(location.search).get('oauth_intent');
+    if(oauthIntent){
+      history.replaceState(null,'',location.pathname+location.hash);
+      const tratado=await this.tratarRetornoGoogle(oauthIntent);
+      if(tratado)return;
+    }
+
     const hash=location.hash.replace('#','')||'';
     const parts=hash.split('/');
     if(parts[0]==='agendar'&&parts[1])await this.showAgendarPage(parts[1]);
@@ -519,6 +572,23 @@ const App = {
     else if(parts[0]==='cliente-login')this.showClienteLoginGeral();
     else if(parts[0]==='cliente-register')this.showClienteRegisterGeral();
     else await this.showHome();
+  },
+
+  async tratarRetornoGoogle(intent){
+    const {data:{user}}=await sb.auth.getUser();
+    if(!user)return false;
+
+    if(intent==='dono'){
+      const dono=await DB.getDonoAtual();
+      if(dono){await this.showPainel(dono);return true}
+      this.showCompletarCadastroDono(user);
+      return true;
+    }else{
+      const cliente=await DB.getClienteAtual();
+      if(cliente){this.navigate('meus-agendamentos');return true}
+      this.showCompletarCadastroCliente(user);
+      return true;
+    }
   },
 
   navigate(h){location.hash=h},
@@ -555,7 +625,7 @@ const App = {
 
         ${cliente?`
         <button onclick="App.navigate('meus-agendamentos')" style="margin-top:24px;background:none;border:none;color:var(--gold);font-family:'DM Sans',sans-serif;font-size:12px;cursor:pointer;text-decoration:underline;">
-          Continuar como ${cliente.nome} →
+          Continuar como ${esc(cliente.nome)} →
         </button>`:''}
       </div>
     </div>`;
@@ -577,9 +647,24 @@ const App = {
         <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="login-email" placeholder="Seu e-mail"></div></div>
         <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="login-senha" placeholder="Senha"></div></div>
         <button class="btn-primary" onclick="App.doLogin()" style="margin-top:8px;">Entrar</button>
+        ${this.botaoGoogleHtml('dono')}
         <div class="auth-switch">Não tem conta? <a onclick="App.navigate('register')">Cadastrar grátis</a></div>
       </div>
     </div></div>`;
+  },
+
+  botaoGoogleHtml(intent){
+    return`
+    <div style="text-align:center;margin:16px 0;font-size:12px;color:var(--muted);">— ou —</div>
+    <button onclick="App.entrarComGoogle('${intent}')" style="width:100%;padding:13px;background:white;border:2px solid var(--border);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--dark);">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.9c1.7-1.57 2.7-3.88 2.7-6.62z"/><path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.9-2.26c-.8.54-1.84.86-3.06.86-2.35 0-4.34-1.59-5.05-3.72H.96v2.33A9 9 0 0 0 9 18z"/><path fill="#FBBC05" d="M3.95 10.7A5.4 5.4 0 0 1 3.66 9c0-.59.1-1.17.29-1.7V4.97H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.03l2.99-2.33z"/><path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.97l2.99 2.33C4.66 5.17 6.65 3.58 9 3.58z"/></svg>
+      Continuar com Google
+    </button>`;
+  },
+
+  async entrarComGoogle(intent){
+    const result=await DB.signInWithGoogle(intent);
+    if(result.error)this.showToast('⚠️ '+result.error);
   },
 
   async doLogin(){
@@ -614,6 +699,7 @@ const App = {
         <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="reg-email" placeholder="Seu e-mail"></div></div>
         <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="reg-senha" placeholder="Crie uma senha"></div></div>
         <button class="btn-primary" onclick="App.doRegister()" style="margin-top:8px;">Criar minha conta grátis</button>
+        ${this.botaoGoogleHtml('dono')}
         <div class="auth-switch">Já tem conta? <a onclick="App.navigate('login')">Entrar</a></div>
       </div>
     </div></div>`;
@@ -633,10 +719,11 @@ const App = {
     const senha=document.getElementById('reg-senha').value;
     const errEl=document.getElementById('reg-error');
     if(!nome||!barbearia||!slug||!email||!senha){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
-    if(senha.length<6){errEl.textContent='Senha deve ter pelo menos 6 caracteres.';errEl.style.display='block';return}
+    if(senha.length<8){errEl.textContent='Senha deve ter pelo menos 8 caracteres.';errEl.style.display='block';return}
     errEl.style.display='none';
     this.showToast('⏳ Criando sua conta...');
     const result=await DB.registerDono(nome,email,senha,slug,barbearia);
+    if(result.precisaConfirmarEmail){this.showConfirmeEmail(email);return}
     if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
     const dono=await DB.getDonoAtual();
     await this.showPainel(dono);
@@ -668,7 +755,7 @@ const App = {
     document.getElementById('app').innerHTML=`
     <div class="app-wrap">
       <div class="painel-header">
-        <div><div class="painel-title">${negocio.nome}</div><div class="painel-sub">Olá, ${dono.nome} 👋</div></div>
+        <div><div class="painel-title">${esc(negocio.nome)}</div><div class="painel-sub">Olá, ${esc(dono.nome)} 👋</div></div>
         <button style="position:relative;z-index:999;cursor:pointer;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-family:'DM Sans',sans-serif;" onclick="App.logoutDono()">Sair</button>
       </div>
       <div style="background:var(--dark);padding:0 20px 16px;">
@@ -708,7 +795,7 @@ const App = {
     <div class="app-wrap">
       <div style="background:var(--dark);padding:48px 24px 32px;text-align:center;">
         <div style="font-size:44px;margin-bottom:12px;">${assinatura&&assinatura.status==='atrasado'?'⚠️':'🔒'}</div>
-        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:white;margin-bottom:6px;">${negocio.nome}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:white;margin-bottom:6px;">${esc(negocio.nome)}</div>
         <div style="font-size:13px;color:var(--muted);">${motivo}</div>
         <button style="margin-top:16px;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-family:'DM Sans',sans-serif;cursor:pointer;" onclick="App.logoutDono()">Sair</button>
       </div>
@@ -812,10 +899,10 @@ const App = {
         <button class="btn-sm" style="background:transparent;border:1px solid #aaa;color:#888;" onclick="App.bloquearClienteDeAg('${ag.id}')">🚫 Bloquear</button>`
       :'';
       return`<div class="ag-card ${ag.status}">
-        <div class="ag-head"><div class="ag-nome">${ag.clienteNome}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
+        <div class="ag-head"><div class="ag-nome">${esc(ag.clienteNome)}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
         <div class="ag-info">
-          <span>📱 ${ag.clienteTel||'-'}</span>
-          ${ag.clienteEmail?`<span>✉️ ${ag.clienteEmail}</span>`:''}
+          <span>📱 ${esc(ag.clienteTel)||'-'}</span>
+          ${ag.clienteEmail?`<span>✉️ ${esc(ag.clienteEmail)}</span>`:''}
           <span>✂️ ${s?s.nome:'-'} · R$${s?s.preco:'-'}</span>
           <span>👤 ${p?p.nome:'-'}</span>
           <span>📅 ${df} às ${ag.hora}</span>
@@ -859,7 +946,7 @@ const App = {
           <button class="cal-nav" onclick="App.mudarDiaAgenda(1)">›</button>
         </div>
         <select onchange="App.mudarProfAgenda(this.value)" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;background:var(--bg);color:var(--dark);">
-          ${profs.map(p=>`<option value="${p.id}" ${p.id===profId?'selected':''}>👤 ${p.nome}</option>`).join('')}
+          ${profs.map(p=>`<option value="${p.id}" ${p.id===profId?'selected':''}>👤 ${esc(p.nome)}</option>`).join('')}
         </select>
       </div>`;
 
@@ -1010,10 +1097,10 @@ const App = {
       const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
       const jaBloqueado=this.cache.bloqueios.some(c=>(ag.clienteId&&c.clienteId===ag.clienteId)||(ag.clienteTel&&c.tel===ag.clienteTel));
       return`<div class="ag-card ${ag.status}">
-        <div class="ag-head"><div class="ag-nome">${ag.clienteNome}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
+        <div class="ag-head"><div class="ag-nome">${esc(ag.clienteNome)}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
         <div class="ag-info">
-          <span>📱 ${ag.clienteTel||'-'}</span>
-          ${ag.clienteEmail?`<span>✉️ ${ag.clienteEmail}</span>`:''}
+          <span>📱 ${esc(ag.clienteTel)||'-'}</span>
+          ${ag.clienteEmail?`<span>✉️ ${esc(ag.clienteEmail)}</span>`:''}
           <span>✂️ ${s?s.nome:'-'} · R$${s?s.preco:'-'}</span>
           <span>👤 ${p?p.nome:'-'}</span>
           <span>📅 ${df} às ${ag.hora}</span>
@@ -1047,10 +1134,10 @@ const App = {
         <div style="background:var(--white);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);border-left:4px solid var(--red);">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
             <div style="flex:1;">
-              <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🚫 ${c.nome}</div>
+              <div style="font-size:14px;font-weight:700;margin-bottom:6px;">🚫 ${esc(c.nome)}</div>
               <div style="font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:3px;">
-                ${c.tel?`<span>📱 ${c.tel}</span>`:''}
-                ${c.email?`<span>✉️ ${c.email}</span>`:''}
+                ${c.tel?`<span>📱 ${esc(c.tel)}</span>`:''}
+                ${c.email?`<span>✉️ ${esc(c.email)}</span>`:''}
                 <span>📅 Bloqueado em ${new Date(c.bloqueadoEm).toLocaleDateString('pt-BR')}</span>
               </div>
             </div>
@@ -1098,7 +1185,7 @@ const App = {
       </div>
       <button class="btn-primary" onclick="App.addServico()">Adicionar serviço</button>
     </div>
-    ${servicos.length?servicos.map(s=>`<div class="cfg-card"><div class="cfg-info"><div class="cfg-name">✂️ ${s.nome}</div><div class="cfg-detail">${s.duracao} min · R$${s.preco}</div></div><button class="btn-danger" onclick="App.deleteServico('${s.id}')">Remover</button></div>`).join(''):'<div class="empty-state"><div class="empty-icon">✂️</div><div class="empty-text">Nenhum serviço cadastrado</div></div>'}`;
+    ${servicos.length?servicos.map(s=>`<div class="cfg-card"><div class="cfg-info"><div class="cfg-name">✂️ ${esc(s.nome)}</div><div class="cfg-detail">${s.duracao} min · R$${s.preco}</div></div><button class="btn-danger" onclick="App.deleteServico('${s.id}')">Remover</button></div>`).join(''):'<div class="empty-state"><div class="empty-icon">✂️</div><div class="empty-text">Nenhum serviço cadastrado</div></div>'}`;
   },
 
   async addServico(){
@@ -1144,7 +1231,7 @@ const App = {
             <input type="file" accept="image/*" onchange="App.uploadFotoProf(event,'${p.id}')">
           </label>
           <div class="cfg-info">
-            <div class="cfg-name">${p.nome}</div>
+            <div class="cfg-name">${esc(p.nome)}</div>
             ${p.foto?`<div class="cfg-detail" style="cursor:pointer;color:var(--red);" onclick="App.removerFotoProf('${p.id}')">Remover foto</div>`:''}
           </div>
         </div>
@@ -1155,6 +1242,7 @@ const App = {
 
   previewNovaFotoProf(e){
     const file=e.target.files[0];if(!file)return;
+    if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     const reader=new FileReader();
     reader.onload=ev=>{
       this._novoProfFoto=ev.target.result;
@@ -1175,6 +1263,7 @@ const App = {
 
   async uploadFotoProf(e,profId){
     const file=e.target.files[0];if(!file)return;
+    if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     const reader=new FileReader();
     reader.onload=async ev=>{
       await DB.updateProfissionalFoto(profId,ev.target.result);
@@ -1249,7 +1338,7 @@ const App = {
       <div style="background:var(--white);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin-bottom:16px;">
         <label class="form-label" style="margin-bottom:8px;">👤 Configurando horário de:</label>
         <select onchange="App.mudarProfHorario(this.value)" style="width:100%;padding:12px;border:1px solid var(--border);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;background:var(--bg);color:var(--dark);">
-          ${profs.map(p=>`<option value="${p.id}" ${p.id===profId?'selected':''}>${p.nome}</option>`).join('')}
+          ${profs.map(p=>`<option value="${p.id}" ${p.id===profId?'selected':''}>${esc(p.nome)}</option>`).join('')}
         </select>
       </div>
       <div class="add-form">
@@ -1459,7 +1548,7 @@ const App = {
     return`
       <div class="add-form">
         <div class="add-form-title">🏪 Nome da barbearia</div>
-        <div class="form-group"><input class="form-input no-icon" type="text" id="cfg-nome" value="${negocio.nome}" placeholder="Nome da barbearia"></div>
+        <div class="form-group"><input class="form-input no-icon" type="text" id="cfg-nome" value="${esc(negocio.nome)}" placeholder="Nome da barbearia"></div>
         <button class="btn-primary" onclick="App.salvarNome()">Salvar nome</button>
       </div>
 
@@ -1506,6 +1595,7 @@ const App = {
 
   async uploadLogo(e){
     const file=e.target.files[0];if(!file)return;
+    if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     const reader=new FileReader();
     reader.onload=async ev=>{
       await DB.updateNegocio(this.cache.negocioId,{logo:ev.target.result});
@@ -1520,6 +1610,7 @@ const App = {
 
   async uploadCapa(e){
     const file=e.target.files[0];if(!file)return;
+    if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     const reader=new FileReader();
     reader.onload=async ev=>{
       await DB.updateNegocio(this.cache.negocioId,{capa:ev.target.result});
@@ -1549,7 +1640,7 @@ const App = {
           <div class="hero-body">
             <div class="hero-row">
               <div class="hero-logo">${logoHtml}</div>
-              <div><div class="hero-name">${negocio.nome}</div><div class="hero-sub">⭐ Agendamento online</div></div>
+              <div><div class="hero-name">${esc(negocio.nome)}</div><div class="hero-sub">⭐ Agendamento online</div></div>
             </div>
           </div>
         </div>
@@ -1580,7 +1671,7 @@ const App = {
           <div class="hero-body">
             <div class="hero-row">
               <div class="hero-logo">${logoHtml}</div>
-              <div><div class="hero-name">${negocio.nome}</div><div class="hero-sub">⭐ Agendamento online</div></div>
+              <div><div class="hero-name">${esc(negocio.nome)}</div><div class="hero-sub">⭐ Agendamento online</div></div>
             </div>
           </div>
         </div>
@@ -1591,7 +1682,7 @@ const App = {
           <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="cli-nome" placeholder="Nome completo"></div></div>
           <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="cli-tel" placeholder="WhatsApp com DDD"></div></div>
           <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-email" placeholder="E-mail"></div></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-senha" placeholder="Crie uma senha (mín. 6 caracteres)"></div></div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-senha" placeholder="Crie uma senha (mín. 8 caracteres)"></div></div>
           <button class="btn-primary" onclick="App.doClienteRegister('${slug}')">Criar conta e agendar</button>
           <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--muted);">Já tem conta? <a onclick="App.showClienteLogin('${slug}')" style="color:var(--dark);font-weight:700;cursor:pointer;text-decoration:underline;">Entrar</a></div>
         </div>
@@ -1617,8 +1708,9 @@ const App = {
     const senha=document.getElementById('cli-senha').value;
     const errEl=document.getElementById('cli-reg-error');
     if(!nome||!tel||!email||!senha){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
-    if(senha.length<6){errEl.textContent='Senha deve ter pelo menos 6 caracteres.';errEl.style.display='block';return}
+    if(senha.length<8){errEl.textContent='Senha deve ter pelo menos 8 caracteres.';errEl.style.display='block';return}
     const result=await DB.registerCliente(nome,email,tel,senha);
+    if(result.precisaConfirmarEmail){this.showConfirmeEmail(email);return}
     if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
     await this.showAgendarPage(slug);
   },
@@ -1640,6 +1732,7 @@ const App = {
         <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-g-email" placeholder="Seu e-mail"></div></div>
         <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-g-senha" placeholder="Senha"></div></div>
         <button class="btn-primary" onclick="App.doClienteLoginGeral()" style="margin-top:8px;">Entrar</button>
+        ${this.botaoGoogleHtml('cliente')}
         <div class="auth-switch">Não tem conta? <a onclick="App.navigate('cliente-register')">Cadastrar grátis</a></div>
       </div>
     </div></div>`;
@@ -1661,8 +1754,9 @@ const App = {
         <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="cli-g-nome" placeholder="Nome completo"></div></div>
         <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="cli-g-tel" placeholder="WhatsApp com DDD"></div></div>
         <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-g-email" placeholder="E-mail"></div></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-g-senha" placeholder="Crie uma senha (mín. 6 caracteres)"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-g-senha" placeholder="Crie uma senha (mín. 8 caracteres)"></div></div>
         <button class="btn-primary" onclick="App.doClienteRegisterGeral()">Criar conta</button>
+        ${this.botaoGoogleHtml('cliente')}
         <div class="auth-switch">Já tem conta? <a onclick="App.navigate('cliente-login')">Entrar</a></div>
       </div>
     </div></div>`;
@@ -1685,8 +1779,89 @@ const App = {
     const senha=document.getElementById('cli-g-senha').value;
     const errEl=document.getElementById('cli-g-reg-error');
     if(!nome||!tel||!email||!senha){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
-    if(senha.length<6){errEl.textContent='Senha deve ter pelo menos 6 caracteres.';errEl.style.display='block';return}
+    if(senha.length<8){errEl.textContent='Senha deve ter pelo menos 8 caracteres.';errEl.style.display='block';return}
     const result=await DB.registerCliente(nome,email,tel,senha);
+    if(result.precisaConfirmarEmail){this.showConfirmeEmail(email);return}
+    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
+    this.navigate('meus-agendamentos');
+  },
+
+  showConfirmeEmail(email){
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;padding:40px;text-align:center;">
+      <div style="font-size:52px;">📬</div>
+      <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;">Confirme seu e-mail</div>
+      <div style="font-size:13px;color:var(--muted);line-height:1.6;">Mandamos um link de confirmação para<br><strong style="color:var(--dark);">${esc(email)}</strong><br><br>Clique no link do e-mail para ativar sua conta e poder entrar.</div>
+      <button class="btn-secondary" onclick="App.navigate('')" style="width:220px;margin-top:8px;">← Voltar ao início</button>
+    </div>`;
+  },
+
+  // ---- COMPLETAR CADASTRO (primeira vez logando com Google) ----
+  showCompletarCadastroDono(user){
+    const nomeSugerido=(user.user_metadata&&(user.user_metadata.full_name||user.user_metadata.name))||'';
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap"><div class="auth-wrap">
+      <div class="auth-hero">
+        <div class="auth-logo">✂️</div><div class="auth-brand">Quase lá!</div>
+        <div class="auth-tagline">Só falta configurar sua barbearia</div>
+      </div>
+      <div class="auth-body">
+        <div class="auth-title">Complete seu cadastro</div>
+        <div class="auth-sub">Entramos com sua conta Google (${esc(user.email)}). Falta só isso:</div>
+        <div id="gc-dono-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="gc-dono-nome" value="${esc(nomeSugerido)}" placeholder="Seu nome"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🏪</span><input class="form-input" type="text" id="gc-dono-barbearia" placeholder="Nome da barbearia"></div></div>
+        <div class="form-group">
+          <label class="form-label">Link de agendamento</label>
+          <div class="input-wrap"><span class="input-icon">🔗</span><input class="form-input" type="text" id="gc-dono-slug" placeholder="minha-barbearia" oninput="this.value=this.value.toLowerCase().replace(/\\s+/g,'-').replace(/[^a-z0-9-]/g,'');document.getElementById('gc-dono-slug-preview').textContent=this.value||'minha-barbearia'"></div>
+          <div class="link-preview">agendafacil.app/<strong id="gc-dono-slug-preview">minha-barbearia</strong></div>
+        </div>
+        <button class="btn-primary" onclick="App.completarCadastroDono()">Concluir cadastro</button>
+      </div>
+    </div></div>`;
+  },
+
+  async completarCadastroDono(){
+    const nome=document.getElementById('gc-dono-nome').value.trim();
+    const barbearia=document.getElementById('gc-dono-barbearia').value.trim();
+    const slug=document.getElementById('gc-dono-slug').value.trim();
+    const errEl=document.getElementById('gc-dono-error');
+    if(!nome||!barbearia||!slug){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
+    errEl.style.display='none';
+    const {data:{user}}=await sb.auth.getUser();
+    const result=await DB.criarInfraestruturaNegocio(user.id,nome,slug,barbearia);
+    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
+    const dono=await DB.getDonoAtual();
+    await this.showPainel(dono);
+  },
+
+  showCompletarCadastroCliente(user){
+    const nomeSugerido=(user.user_metadata&&(user.user_metadata.full_name||user.user_metadata.name))||'';
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap"><div class="auth-wrap">
+      <div class="auth-hero">
+        <div class="auth-logo">👤</div><div class="auth-brand">Quase lá!</div>
+        <div class="auth-tagline">Só mais um passo pra agendar</div>
+      </div>
+      <div class="auth-body">
+        <div class="auth-title">Complete seu cadastro</div>
+        <div class="auth-sub">Entramos com sua conta Google (${esc(user.email)}). Falta só o telefone:</div>
+        <div id="gc-cli-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="gc-cli-nome" value="${esc(nomeSugerido)}" placeholder="Nome completo"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="gc-cli-tel" placeholder="WhatsApp com DDD"></div></div>
+        <button class="btn-primary" onclick="App.completarCadastroCliente()">Concluir cadastro</button>
+      </div>
+    </div></div>`;
+  },
+
+  async completarCadastroCliente(){
+    const nome=document.getElementById('gc-cli-nome').value.trim();
+    const tel=document.getElementById('gc-cli-tel').value.trim();
+    const errEl=document.getElementById('gc-cli-error');
+    if(!nome||!tel){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
+    errEl.style.display='none';
+    const {data:{user}}=await sb.auth.getUser();
+    const result=await DB.criarPerfilCliente(user.id,nome,user.email,tel);
     if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
     this.navigate('meus-agendamentos');
   },
@@ -1732,12 +1907,12 @@ const App = {
           <div class="hero-row">
             <div class="hero-logo">${logoHtml}</div>
             <div>
-              <div class="hero-name">${negocio.nome}</div>
+              <div class="hero-name">${esc(negocio.nome)}</div>
               <div class="hero-sub">⭐ Agendamento online</div>
             </div>
           </div>
           <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:5;">
-            <div style="font-size:12px;color:rgba(255,255,255,0.6);">👤 ${clienteSession.nome}</div>
+            <div style="font-size:12px;color:rgba(255,255,255,0.6);">👤 ${esc(clienteSession.nome)}</div>
             <div style="position:relative;">
               <button onclick="App.toggleClienteMenu()" id="cliente-menu-btn" style="font-size:11px;color:var(--gold);background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:5px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;">
                 Minha conta ▾
@@ -1759,13 +1934,13 @@ const App = {
         <div class="section">
           <div class="section-label">1. Escolha o serviço</div>
           <div class="service-list">
-            ${servicos.map(s=>`<div class="service-card" onclick="App.selectServico('${s.id}')" data-id="${s.id}"><div class="service-left"><div class="service-icon">✂️</div><div><div class="service-name">${s.nome}</div><div class="service-dur">⏱ ${s.duracao} min</div></div></div><div class="service-right"><div class="service-price">R$${s.preco}</div><div class="check">✓</div></div></div>`).join('')||'<div style="color:var(--muted);font-size:13px;">Nenhum serviço cadastrado.</div>'}
+            ${servicos.map(s=>`<div class="service-card" onclick="App.selectServico('${s.id}')" data-id="${s.id}"><div class="service-left"><div class="service-icon">✂️</div><div><div class="service-name">${esc(s.nome)}</div><div class="service-dur">⏱ ${s.duracao} min</div></div></div><div class="service-right"><div class="service-price">R$${s.preco}</div><div class="check">✓</div></div></div>`).join('')||'<div style="color:var(--muted);font-size:13px;">Nenhum serviço cadastrado.</div>'}
           </div>
         </div>
         <div class="section">
           <div class="section-label">2. Escolha o profissional</div>
           <div class="barber-list">
-            ${profs.map(p=>`<div class="barber-card" onclick="App.selectProfissional('${p.id}')" data-id="${p.id}"><div class="barber-avatar">${p.foto?`<img src="${p.foto}" style="width:100%;height:100%;object-fit:cover;">`:'👤'}</div><div class="barber-name">${p.nome}</div></div>`).join('')}
+            ${profs.map(p=>`<div class="barber-card" onclick="App.selectProfissional('${p.id}')" data-id="${p.id}"><div class="barber-avatar">${p.foto?`<img src="${p.foto}" style="width:100%;height:100%;object-fit:cover;">`:'👤'}</div><div class="barber-name">${esc(p.nome)}</div></div>`).join('')}
           </div>
         </div>
         <div class="section">
@@ -1779,7 +1954,7 @@ const App = {
         <div class="section">
           <div class="summary-box">
             <div class="summary-title">Resumo do agendamento</div>
-            <div class="summary-row"><span class="summary-lbl">Cliente</span><span class="summary-val">${clienteSession.nome}</span></div>
+            <div class="summary-row"><span class="summary-lbl">Cliente</span><span class="summary-val">${esc(clienteSession.nome)}</span></div>
             <div class="summary-row"><span class="summary-lbl">Serviço</span><span class="summary-val" id="res-servico">—</span></div>
             <div class="summary-row"><span class="summary-lbl">Profissional</span><span class="summary-val" id="res-prof">—</span></div>
             <div class="summary-row"><span class="summary-lbl">Data</span><span class="summary-val" id="res-data">—</span></div>
@@ -1822,7 +1997,7 @@ const App = {
           <button onclick="App.navigate('')" style="background:rgba(255,255,255,0.1);border:none;border-radius:8px;width:32px;height:32px;color:white;cursor:pointer;font-size:16px;">←</button>
           <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:white;">Meus Agendamentos</div>
         </div>
-        <div style="font-size:12px;color:var(--muted);padding-left:44px;">👤 ${clienteSession.nome}</div>
+        <div style="font-size:12px;color:var(--muted);padding-left:44px;">👤 ${esc(clienteSession.nome)}</div>
       </div>
       <div style="padding:20px;padding-bottom:40px;" id="meus-ag-content">
         <div class="loading">Carregando...</div>
@@ -2066,7 +2241,7 @@ const App = {
     const d=new Date(this.selectedData+'T12:00:00');
     const fmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
     document.getElementById('success-card').innerHTML=`
-      <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Cliente</div><div class="s-val">${clienteSession.nome}</div></div></div>
+      <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Cliente</div><div class="s-val">${esc(clienteSession.nome)}</div></div></div>
       <div class="success-row"><span class="s-icon">✂️</span><div><div class="s-lbl">Serviço</div><div class="s-val">${this.selectedServico.nome}</div></div></div>
       <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Profissional</div><div class="s-val">${this.selectedProfissional.nome}</div></div></div>
       <div class="success-row"><span class="s-icon">📅</span><div><div class="s-lbl">Data e hora</div><div class="s-val">${fmt} às ${this.selectedHora}</div></div></div>
@@ -2130,7 +2305,7 @@ const App = {
     return`
       <div style="background:var(--white);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:20px;">
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:14px;">📋 Detalhes do agendamento</div>
-        <div class="success-row"><span class="s-icon">🏪</span><div><div class="s-lbl">Barbearia</div><div class="s-val">${negocioObj?negocioObj.nome:'-'}</div></div></div>
+        <div class="success-row"><span class="s-icon">🏪</span><div><div class="s-lbl">Barbearia</div><div class="s-val">${negocioObj?esc(negocioObj.nome):'-'}</div></div></div>
         <div class="success-row"><span class="s-icon">✂️</span><div><div class="s-lbl">Serviço</div><div class="s-val">${s?s.nome:'-'}</div></div></div>
         <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Profissional</div><div class="s-val">${p?p.nome:'-'}</div></div></div>
         <div class="success-row"><span class="s-icon">📅</span><div><div class="s-lbl">Data e hora</div><div class="s-val">${fmt} às ${ag.hora}</div></div></div>
@@ -2190,7 +2365,12 @@ const App = {
 };
 
 window.addEventListener('hashchange',()=>App.init());
-window.addEventListener('DOMContentLoaded',()=>App.init());
+window.addEventListener('DOMContentLoaded',async()=>{
+  // Garante que o Supabase termine de processar qualquer token vindo de um
+  // redirecionamento (ex: login com Google) antes do nosso roteador ler a URL
+  await sb.auth.getSession();
+  App.init();
+});
 document.addEventListener('click',(e)=>{
   const dd=document.getElementById('cliente-menu-dropdown');
   const btn=document.getElementById('cliente-menu-btn');
