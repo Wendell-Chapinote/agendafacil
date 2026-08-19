@@ -7,9 +7,27 @@ const PRICE_IDS = {
   pro: 'price_1U32wDDGnB6UpcSg2anvpXIn',
 };
 
+// Só aceita chamadas vindas do próprio site (produção ou previews do Vercel) —
+// impede que outro site use este endpoint escondido dentro do navegador de um visitante.
+function origemPermitida(req) {
+  const origin = req.headers.origin;
+  if (!origin) return false;
+  if (origin === `https://${req.headers.host}`) return true;
+  try {
+    const host = new URL(origin).hostname;
+    return host.endsWith('.vercel.app');
+  } catch (e) {
+    return false;
+  }
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
+  }
+
+  if (!origemPermitida(req)) {
+    return res.status(403).json({ error: 'Origem não autorizada' });
   }
 
   const { negocioId, plano } = req.body || {};
