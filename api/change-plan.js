@@ -12,6 +12,7 @@
 
 const SUPABASE_URL = 'https://fsgyltsicqthxqoulufd.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_5WVdzdHJKBtcpOrUhcxraQ_XEsOZ_b2';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const PRICE_IDS = {
   basico: 'price_1U32viDGnB6UpcSglVWqGtyg',
@@ -60,6 +61,9 @@ module.exports = async function handler(req, res) {
 
   if (!negocioId || !novoPlano || !authHeader) {
     return res.status(400).json({ error: 'Dados incompletos' });
+  }
+  if (!UUID_REGEX.test(negocioId)) {
+    return res.status(400).json({ error: 'Identificador inválido' });
   }
   if (!PRICE_IDS[novoPlano]) {
     return res.status(400).json({ error: 'Plano inválido' });
@@ -131,6 +135,6 @@ module.exports = async function handler(req, res) {
     }
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: 'Erro interno. Tente novamente em instantes.' });
   }
 };
