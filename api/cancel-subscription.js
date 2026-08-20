@@ -8,6 +8,7 @@
 
 const SUPABASE_URL = 'https://fsgyltsicqthxqoulufd.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_5WVdzdHJKBtcpOrUhcxraQ_XEsOZ_b2';
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Só aceita chamadas vindas do próprio site (produção ou previews do Vercel)
 function origemPermitida(req) {
@@ -36,6 +37,9 @@ module.exports = async function handler(req, res) {
 
   if (!negocioId || !authHeader) {
     return res.status(400).json({ error: 'Dados incompletos' });
+  }
+  if (!UUID_REGEX.test(negocioId)) {
+    return res.status(400).json({ error: 'Identificador inválido' });
   }
 
   try {
@@ -93,12 +97,12 @@ module.exports = async function handler(req, res) {
 
     if (!stripeResp.ok) {
       console.error('Erro do Stripe:', data);
-      return res.status(400).json({ error: data.error?.message || 'Erro ao atualizar assinatura' });
+      return res.status(400).json({ error: 'Não foi possível processar sua solicitação. Tente novamente em instantes.' });
     }
 
     return res.status(200).json({ ok: true, cancelAtPeriodEnd: data.cancel_at_period_end });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: 'Erro interno. Tente novamente em instantes.' });
   }
 };
