@@ -7,6 +7,8 @@ const PRICE_IDS = {
   pro: 'price_1U32wDDGnB6UpcSg2anvpXIn',
 };
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Só aceita chamadas vindas do próprio site (produção ou previews do Vercel) —
 // impede que outro site use este endpoint escondido dentro do navegador de um visitante.
 function origemPermitida(req) {
@@ -34,6 +36,9 @@ module.exports = async function handler(req, res) {
 
   if (!negocioId || !plano) {
     return res.status(400).json({ error: 'Dados incompletos' });
+  }
+  if (!UUID_REGEX.test(negocioId)) {
+    return res.status(400).json({ error: 'Identificador inválido' });
   }
 
   const priceId = PRICE_IDS[plano];
@@ -66,12 +71,12 @@ module.exports = async function handler(req, res) {
 
     if (!stripeResp.ok) {
       console.error('Erro do Stripe:', data);
-      return res.status(400).json({ error: data.error?.message || 'Erro ao criar checkout' });
+      return res.status(400).json({ error: 'Não foi possível iniciar o pagamento. Tente novamente em instantes.' });
     }
 
     return res.status(200).json({ url: data.url });
   } catch (e) {
     console.error(e);
-    return res.status(500).json({ error: e.message });
+    return res.status(500).json({ error: 'Erro interno. Tente novamente em instantes.' });
   }
 }
