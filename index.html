@@ -1994,7 +1994,11 @@ const App = {
     this.renderCalendar();
   },
 
-  async logoutCliente(slug){ await DB.logout(); this.showClienteLogin(slug); },
+  async logoutCliente(slug){
+    await DB.logout();
+    if(slug)this.showClienteLogin(slug);
+    else this.navigate('');
+  },
 
   toggleClienteMenu(){
     const dd=document.getElementById('cliente-menu-dropdown');
@@ -2011,11 +2015,19 @@ const App = {
     document.getElementById('app').innerHTML=`
     <div class="app-wrap">
       <div style="background:var(--dark);padding:48px 20px 20px;">
-        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
-          <button onclick="App.navigate('')" style="background:rgba(255,255,255,0.1);border:none;border-radius:8px;width:32px;height:32px;color:white;cursor:pointer;font-size:16px;">←</button>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
           <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:white;">Meus Agendamentos</div>
+          <div style="position:relative;">
+            <button onclick="App.toggleClienteMenu()" id="cliente-menu-btn" style="font-size:11px;color:var(--gold);background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:5px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;">
+              Minha conta ▾
+            </button>
+            <div id="cliente-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:white;border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden;min-width:190px;z-index:20;">
+              <div onclick="App.navigate('')" style="padding:13px 16px;font-size:13px;font-weight:600;color:var(--dark);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);">🏠 Início</div>
+              <div onclick="App.logoutCliente('')" style="padding:13px 16px;font-size:13px;font-weight:600;color:var(--red);cursor:pointer;display:flex;align-items:center;gap:8px;">🚪 Sair da conta</div>
+            </div>
+          </div>
         </div>
-        <div style="font-size:12px;color:var(--muted);padding-left:44px;">👤 ${esc(clienteSession.nome)}</div>
+        <div style="font-size:12px;color:var(--muted);">👤 ${esc(clienteSession.nome)}</div>
       </div>
       <div style="padding:20px;padding-bottom:40px;" id="meus-ag-content">
         <div class="loading">Carregando...</div>
