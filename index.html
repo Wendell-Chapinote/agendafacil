@@ -410,6 +410,21 @@ const DB = {
   },
 
   // ============================================
+  // IMAGENS (Supabase Storage — não mais base64 no banco)
+  // ============================================
+  async uploadImagem(path,file){
+    const {error}=await sb.storage.from('imagens').upload(path,file,{upsert:true,contentType:file.type,cacheControl:'3600'});
+    if(error)return{error:error.message};
+    const {data}=sb.storage.from('imagens').getPublicUrl(path);
+    // adiciona um parâmetro de versão pra "furar" cache do navegador quando a foto é trocada
+    return{url:`${data.publicUrl}?v=${Date.now()}`};
+  },
+
+  async removerImagem(path){
+    await sb.storage.from('imagens').remove([path]);
+  },
+
+  // ============================================
   // SERVIÇOS
   // ============================================
   async getServicos(negocioId){
@@ -1243,9 +1258,10 @@ const App = {
   previewNovaFotoProf(e){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
+    this._novoProfFotoFile=file; // guardado pra subir depois que o profissional for criado (aí temos o ID)
     const reader=new FileReader();
     reader.onload=ev=>{
-      this._novoProfFoto=ev.target.result;
+      this._novoProfFoto=ev.target.result; // só pra pré-visualização na tela, nunca salvo no banco
       document.getElementById('painel-content').innerHTML=this.renderProfissionais();
     };
     reader.readAsDataURL(file);
@@ -1254,8 +1270,13 @@ const App = {
   async addProfissional(){
     const nome=document.getElementById('p-nome').value.trim();
     if(!nome){this.showToast('⚠️ Digite o nome');return}
-    await DB.addProfissional(this.cache.negocioId,nome,this._novoProfFoto||'');
+    const novoProf=await DB.addProfissional(this.cache.negocioId,nome,'');
+    if(this._novoProfFotoFile&&novoProf&&novoProf.id){
+      const result=await DB.uploadImagem(`profissionais/${novoProf.id}`,this._novoProfFotoFile);
+      if(!result.error)await DB.updateProfissionalFoto(novoProf.id,result.url);
+    }
     this._novoProfFoto=null;
+    this._novoProfFotoFile=null;
     await this.refreshPainelContent();
     document.getElementById('painel-content').innerHTML=this.renderProfissionais();
     this.showToast('✅ Profissional adicionado!');
@@ -1264,17 +1285,16 @@ const App = {
   async uploadFotoProf(e,profId){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
-    const reader=new FileReader();
-    reader.onload=async ev=>{
-      await DB.updateProfissionalFoto(profId,ev.target.result);
-      await this.refreshPainelContent();
-      document.getElementById('painel-content').innerHTML=this.renderProfissionais();
-      this.showToast('✅ Foto atualizada!');
-    };
-    reader.readAsDataURL(file);
+    const result=await DB.uploadImagem(`profissionais/${profId}`,file);
+    if(result.error){this.showToast('⚠️ Erro ao enviar foto: '+result.error);return}
+    await DB.updateProfissionalFoto(profId,result.url);
+    await this.refreshPainelContent();
+    document.getElementById('painel-content').innerHTML=this.renderProfissionais();
+    this.showToast('✅ Foto atualizada!');
   },
 
   async removerFotoProf(profId){
+    await DB.removerImagem(`profissionais/${profId}`);
     await DB.updateProfissionalFoto(profId,'');
     await this.refreshPainelContent();
     document.getElementById('painel-content').innerHTML=this.renderProfissionais();
@@ -1596,31 +1616,29 @@ const App = {
   async uploadLogo(e){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
-    const reader=new FileReader();
-    reader.onload=async ev=>{
-      await DB.updateNegocio(this.cache.negocioId,{logo:ev.target.result});
-      this.cache.negocio.logo=ev.target.result;
-      const dono=await DB.getDonoAtual();
-      await this.showPainel(dono);
-      setTimeout(()=>{const configTab=document.querySelector('.tab[data-tab="config"]');this.switchTab('config',configTab)},100);
-      this.showToast('✅ Logo atualizado!');
-    };
-    reader.readAsDataURL(file);
+    this.showToast('⏳ Enviando logo...');
+    const result=await DB.uploadImagem(`logos/${this.cache.negocioId}`,file);
+    if(result.error){this.showToast('⚠️ Erro ao enviar logo: '+result.error);return}
+    await DB.updateNegocio(this.cache.negocioId,{logo:result.url});
+    this.cache.negocio.logo=result.url;
+    const dono=await DB.getDonoAtual();
+    await this.showPainel(dono);
+    setTimeout(()=>{const configTab=document.querySelector('.tab[data-tab="config"]');this.switchTab('config',configTab)},100);
+    this.showToast('✅ Logo atualizado!');
   },
 
   async uploadCapa(e){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
-    const reader=new FileReader();
-    reader.onload=async ev=>{
-      await DB.updateNegocio(this.cache.negocioId,{capa:ev.target.result});
-      this.cache.negocio.capa=ev.target.result;
-      const dono=await DB.getDonoAtual();
-      await this.showPainel(dono);
-      setTimeout(()=>{const configTab=document.querySelector('.tab[data-tab="config"]');this.switchTab('config',configTab)},100);
-      this.showToast('✅ Capa atualizada!');
-    };
-    reader.readAsDataURL(file);
+    this.showToast('⏳ Enviando capa...');
+    const result=await DB.uploadImagem(`capas/${this.cache.negocioId}`,file);
+    if(result.error){this.showToast('⚠️ Erro ao enviar capa: '+result.error);return}
+    await DB.updateNegocio(this.cache.negocioId,{capa:result.url});
+    this.cache.negocio.capa=result.url;
+    const dono=await DB.getDonoAtual();
+    await this.showPainel(dono);
+    setTimeout(()=>{const configTab=document.querySelector('.tab[data-tab="config"]');this.switchTab('config',configTab)},100);
+    this.showToast('✅ Capa atualizada!');
   },
 
   copyLink(slug){const url=`${location.origin}${location.pathname}#agendar/${slug}`;navigator.clipboard.writeText(url).then(()=>this.showToast('🔗 Link copiado!'))},
