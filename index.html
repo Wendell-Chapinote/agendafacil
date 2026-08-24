@@ -791,6 +791,7 @@ const App = {
         <div class="tab" data-tab="profissionais" onclick="App.switchTab('profissionais',this)">👤 Equipe</div>
         <div class="tab" data-tab="horarios" onclick="App.switchTab('horarios',this)">🕐 Horários</div>
         <div class="tab" data-tab="bloqueados" onclick="App.switchTab('bloqueados',this)">🚫 Bloqueios</div>
+        <div class="tab" data-tab="insights" onclick="App.switchTab('insights',this)">📊 Insights</div>
         <div class="tab" data-tab="assinatura" onclick="App.switchTab('assinatura',this)">💳 Assinatura</div>
         <div class="tab" data-tab="config" onclick="App.switchTab('config',this)">⚙️ Config</div>
       </div>
@@ -820,7 +821,12 @@ const App = {
         <div style="background:white;border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:14px;border:2px solid var(--border);">
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">Básico</div>
           <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;margin-bottom:4px;">R$30<span style="font-size:14px;color:var(--muted);font-weight:400;">/mês</span></div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Agendamento completo para até 1 profissional</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Ideal pra quem trabalha sozinho</div>
+          <div style="font-size:12px;color:var(--dark);display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
+            <div>✅ Agendamento online completo</div>
+            <div>✅ 1 profissional</div>
+            <div>✅ Serviços, horários e bloqueios</div>
+          </div>
           <button class="btn-primary" onclick="App.assinarPlano('${negocio.id}','basico',this)">Assinar Básico</button>
         </div>
 
@@ -828,7 +834,14 @@ const App = {
           <div style="position:absolute;top:-10px;right:16px;background:var(--gold);color:var(--dark);font-size:10px;font-weight:700;padding:3px 10px;border-radius:20px;">POPULAR</div>
           <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:6px;">Pro</div>
           <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;margin-bottom:4px;">R$50<span style="font-size:14px;color:var(--muted);font-weight:400;">/mês</span></div>
-          <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Profissionais ilimitados + relatórios</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Pra quem quer crescer com dados de verdade</div>
+          <div style="font-size:12px;color:var(--dark);display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">
+            <div>✅ Tudo do Básico</div>
+            <div>✅ <strong>Profissionais ilimitados</strong></div>
+            <div>✅ <strong>Insights de gestão</strong> — faturamento, taxa de cancelamento, serviço mais popular e mais</div>
+            <div>✅ Exportar relatórios em CSV</div>
+            <div>🔜 Notificações automáticas no WhatsApp</div>
+          </div>
           <button class="btn-primary" onclick="App.assinarPlano('${negocio.id}','pro',this)">Assinar Pro</button>
         </div>
 
@@ -856,14 +869,17 @@ const App = {
   async logoutDono(){ await DB.logout(); this.navigate(''); location.reload(); },
 
   async loadCache(negocioId,negocioObj){
-    const [servicos,profissionais,agendamentos,horarios,bloqueios]=await Promise.all([
+    const [servicos,profissionais,agendamentos,horarios,bloqueios,assinatura]=await Promise.all([
       DB.getServicos(negocioId),
       DB.getProfissionais(negocioId),
       DB.getAgendamentos(negocioId),
       DB.getHorariosTodos(negocioId),
       DB.getBloqueios(negocioId),
+      DB.getAssinatura(negocioId),
     ]);
-    this.cache={negocioId,negocio:negocioObj,servicos,profissionais,agendamentos,horarios,bloqueios};
+    // durante o teste grátis, libera tudo do Pro (mostra o valor antes de cobrar)
+    const isPro=!!assinatura&&(assinatura.status==='trial'||assinatura.plano==='pro');
+    this.cache={negocioId,negocio:negocioObj,servicos,profissionais,agendamentos,horarios,bloqueios,assinatura,isPro};
   },
 
   async switchTab(tab,el){
@@ -879,6 +895,7 @@ const App = {
     else if(tab==='profissionais')c.innerHTML=this.renderProfissionais();
     else if(tab==='horarios')c.innerHTML=this.renderHorarios();
     else if(tab==='bloqueados')c.innerHTML=this.renderBloqueados();
+    else if(tab==='insights')c.innerHTML=this.renderInsights();
     else if(tab==='assinatura')c.innerHTML=await this.renderAssinatura();
     else if(tab==='config')c.innerHTML=this.renderConfig();
   },
@@ -1224,8 +1241,20 @@ const App = {
   // ---- PROFISSIONAIS ----
   renderProfissionais(){
     const profs=this.cache.profissionais;
+    const LIMITE_BASICO=1;
+    const atingiuLimite=!this.cache.isPro&&profs.length>=LIMITE_BASICO;
     const previewFoto=this._novoProfFoto?`<img src="${this._novoProfFoto}">`:'<span style="font-size:22px;">👤</span>';
-    return`<div class="add-form">
+
+    const formNovoProf=atingiuLimite?`
+    <div class="add-form" style="background:linear-gradient(135deg,#1a1a1a,#2a2a2a);">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span style="font-size:20px;">🔒</span>
+        <div style="font-family:'Playfair Display',serif;font-size:15px;font-weight:700;color:white;">Limite do plano Básico atingido</div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">O plano Básico permite ${LIMITE_BASICO} profissional. Faça upgrade para o Pro e cadastre quantos quiser.</div>
+      <button class="btn-primary" onclick="App.irParaPaywall('${this.cache.negocioId}')">⬆️ Fazer upgrade para o Pro</button>
+    </div>`:`
+    <div class="add-form">
       <div class="add-form-title">➕ Novo profissional</div>
       <div style="display:flex;gap:14px;align-items:center;margin-bottom:14px;">
         <label class="logo-box" style="width:64px;height:64px;">
@@ -1236,7 +1265,9 @@ const App = {
       </div>
       <div class="form-group"><input class="form-input no-icon" type="text" id="p-nome" placeholder="Nome do barbeiro"></div>
       <button class="btn-primary" onclick="App.addProfissional()">Adicionar profissional</button>
-    </div>
+    </div>`;
+
+    return`${formNovoProf}
     ${profs.length?profs.map(p=>{
       const fotoHtml=p.foto?`<img src="${p.foto}">`:'<span style="font-size:20px;">👤</span>';
       return`<div class="cfg-card">
@@ -1270,6 +1301,10 @@ const App = {
   async addProfissional(){
     const nome=document.getElementById('p-nome').value.trim();
     if(!nome){this.showToast('⚠️ Digite o nome');return}
+    if(!this.cache.isPro&&this.cache.profissionais.length>=1){
+      this.showToast('🔒 Limite do plano Básico atingido — faça upgrade pra adicionar mais');
+      return;
+    }
     const novoProf=await DB.addProfissional(this.cache.negocioId,nome,'');
     if(this._novoProfFotoFile&&novoProf&&novoProf.id){
       const result=await DB.uploadImagem(`profissionais/${novoProf.id}`,this._novoProfFotoFile);
@@ -1558,6 +1593,125 @@ const App = {
     if(result.error){this.showToast('⚠️ '+result.error);btnEl.textContent='↩️ Reativar assinatura';btnEl.disabled=false;return}
     this.showToast('✅ Assinatura reativada!');
     document.getElementById('painel-content').innerHTML=await this.renderAssinatura();
+  },
+
+  // ---- INSIGHTS DE GESTÃO (só Pro) ----
+  renderInsights(){
+    if(!this.cache.isPro){
+      return`
+      <div class="add-form" style="background:linear-gradient(135deg,#1a1a1a,#2a2a2a);text-align:center;padding:32px 20px;">
+        <div style="font-size:36px;margin-bottom:12px;">📊</div>
+        <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:white;margin-bottom:8px;">Insights de Gestão é exclusivo do Pro</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:18px;line-height:1.6;">Veja faturamento do mês, serviço mais popular, taxa de cancelamento e muito mais — tudo automático.</div>
+        <button class="btn-primary" onclick="App.irParaPaywall('${this.cache.negocioId}')">⬆️ Fazer upgrade para o Pro</button>
+      </div>`;
+    }
+
+    const hoje=new Date();
+    const anoMes=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+    const mesAntDate=new Date(hoje.getFullYear(),hoje.getMonth()-1,1);
+    const anoMesAnt=`${mesAntDate.getFullYear()}-${String(mesAntDate.getMonth()+1).padStart(2,'0')}`;
+
+    const agsMes=this.cache.agendamentos.filter(a=>a.data.startsWith(anoMes));
+    const agsMesAnt=this.cache.agendamentos.filter(a=>a.data.startsWith(anoMesAnt));
+
+    const precoServico=(servicoId)=>{const s=this.cache.servicos.find(x=>x.id===servicoId);return s?Number(s.preco):0};
+    const faturamento=(ags)=>ags.filter(a=>a.status==='confirmado').reduce((sum,a)=>sum+precoServico(a.servicoId),0);
+
+    const faturamentoMes=faturamento(agsMes);
+    const faturamentoAnt=faturamento(agsMesAnt);
+    const crescimento=faturamentoAnt>0?((faturamentoMes-faturamentoAnt)/faturamentoAnt*100):(faturamentoMes>0?100:0);
+
+    const totalMes=agsMes.length;
+    const pendentes=agsMes.filter(a=>a.status==='pendente').length;
+    const confirmados=agsMes.filter(a=>a.status==='confirmado').length;
+    const cancelados=agsMes.filter(a=>a.status==='cancelado').length;
+    const taxaCancelamento=totalMes>0?(cancelados/totalMes*100):0;
+
+    const contarPor=(campo)=>{
+      const contagem={};
+      agsMes.filter(a=>a.status!=='cancelado').forEach(a=>{contagem[a[campo]]=(contagem[a[campo]]||0)+1});
+      let topId=null,topCount=0;
+      Object.entries(contagem).forEach(([id,count])=>{if(count>topCount){topCount=count;topId=id}});
+      return{topId,topCount};
+    };
+    const servicoTop=contarPor('servicoId');
+    const profTop=contarPor('profissionalId');
+    const nomeServicoTop=this.cache.servicos.find(s=>s.id===servicoTop.topId);
+    const nomeProfTop=this.cache.profissionais.find(p=>p.id===profTop.topId);
+
+    const mesNomes=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    return`
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px;">📅 ${mesNomes[hoje.getMonth()]} de ${hoje.getFullYear()}</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div class="add-form" style="margin-bottom:0;padding:16px;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Faturamento</div>
+          <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;">R$${faturamentoMes.toFixed(2)}</div>
+          <div style="font-size:11px;margin-top:4px;color:${crescimento>=0?'var(--green)':'var(--red)'};">${crescimento>=0?'↑':'↓'} ${Math.abs(crescimento).toFixed(0)}% vs mês anterior</div>
+        </div>
+        <div class="add-form" style="margin-bottom:0;padding:16px;">
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Agendamentos</div>
+          <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;">${totalMes}</div>
+          <div style="font-size:11px;margin-top:4px;color:var(--muted);">${confirmados} confirmados</div>
+        </div>
+      </div>
+
+      <div class="add-form">
+        <div class="add-form-title">📈 Status dos agendamentos</div>
+        <div class="summary-row" style="border-bottom:1px solid var(--border);"><span class="summary-lbl" style="color:var(--muted);">🟢 Confirmados</span><span style="font-weight:600;">${confirmados}</span></div>
+        <div class="summary-row" style="border-bottom:1px solid var(--border);"><span class="summary-lbl" style="color:var(--muted);">🟡 Pendentes</span><span style="font-weight:600;">${pendentes}</span></div>
+        <div class="summary-row" style="border-bottom:none;"><span class="summary-lbl" style="color:var(--muted);">🔴 Cancelados</span><span style="font-weight:600;">${cancelados} (${taxaCancelamento.toFixed(0)}%)</span></div>
+      </div>
+
+      <div class="add-form">
+        <div class="add-form-title">🏆 Destaques do mês</div>
+        <div class="summary-row" style="border-bottom:1px solid var(--border);">
+          <span class="summary-lbl" style="color:var(--muted);">✂️ Serviço mais popular</span>
+          <span style="font-weight:600;">${nomeServicoTop?esc(nomeServicoTop.nome)+' ('+servicoTop.topCount+')':'—'}</span>
+        </div>
+        <div class="summary-row" style="border-bottom:none;">
+          <span class="summary-lbl" style="color:var(--muted);">👤 Profissional mais agendado</span>
+          <span style="font-weight:600;">${nomeProfTop?esc(nomeProfTop.nome)+' ('+profTop.topCount+')':'—'}</span>
+        </div>
+      </div>
+
+      <div class="add-form">
+        <div class="add-form-title">📤 Exportar dados</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Baixe os agendamentos do mês em planilha (CSV) — útil pra levar pro contador ou controle próprio.</div>
+        <button style="width:100%;padding:12px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;" onclick="App.exportarCSV()">📄 Exportar CSV do mês</button>
+      </div>`;
+  },
+
+  exportarCSV(){
+    const hoje=new Date();
+    const anoMes=`${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}`;
+    const agsMes=this.cache.agendamentos.filter(a=>a.data.startsWith(anoMes));
+    if(!agsMes.length){this.showToast('⚠️ Nenhum agendamento neste mês pra exportar');return}
+
+    const linhas=[['Cliente','Telefone','E-mail','Serviço','Profissional','Data','Hora','Status','Valor']];
+    agsMes.sort((a,b)=>(a.data+a.hora).localeCompare(b.data+b.hora)).forEach(a=>{
+      const s=this.cache.servicos.find(x=>x.id===a.servicoId);
+      const p=this.cache.profissionais.find(x=>x.id===a.profissionalId);
+      linhas.push([
+        a.clienteNome||'',a.clienteTel||'',a.clienteEmail||'',
+        s?s.nome:'',p?p.nome:'',a.data,a.hora,a.status,
+        s?String(s.preco).replace('.',','):''
+      ]);
+    });
+
+    const csv='\uFEFF'+linhas.map(linha=>linha.map(campo=>`"${String(campo).replace(/"/g,'""')}"`).join(';')).join('\r\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download=`agendamentos-${anoMes}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    this.showToast('✅ CSV exportado!');
   },
 
   // ---- CONFIG ----
