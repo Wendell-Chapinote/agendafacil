@@ -359,6 +359,18 @@ const DB = {
     }catch(e){return{error:'Erro de conexão: '+e.message}}
   },
 
+  // Dispara notificação por WhatsApp (silencioso — nunca trava a ação principal se falhar)
+  async notificar(agendamentoId,tipo,codigo){
+    try{
+      const headers={'Content-Type':'application/json'};
+      if(!codigo){
+        const {data:{session}}=await sb.auth.getSession();
+        if(session)headers['Authorization']=`Bearer ${session.access_token}`;
+      }
+      await fetch('/api/notificar',{method:'POST',headers,body:JSON.stringify({agendamentoId,tipo,codigo})});
+    }catch(e){/* notificação nunca deve travar o fluxo principal do usuário */}
+  },
+
 
   // AUTH — CLIENTE (conta global)
   // ============================================
@@ -1070,6 +1082,8 @@ const App = {
 
   async updateAg(id,status){
     await DB.updateStatus(id,status);
+    if(status==='confirmado')this.notificar(id,'confirmado');
+    else if(status==='cancelado')this.notificar(id,'cancelado_pelo_dono');
     await this.refreshPainelContent();
     document.getElementById('painel-content').innerHTML=this.renderAgenda();
     this.showToast(status==='confirmado'?'✅ Confirmado!':(status==='cancelado'?'❌ Cancelado':''));
@@ -1082,6 +1096,7 @@ const App = {
     if(jaExiste){this.showToast('⚠️ Cliente já está bloqueado');return}
     await DB.bloquearCliente(this.cache.negocioId,ag.clienteId,ag.clienteNome||'Desconhecido',ag.clienteTel||'',ag.clienteEmail||'');
     await DB.updateStatus(agId,'cancelado');
+    this.notificar(agId,'cancelado_pelo_dono');
     await this.refreshPainelContent();
     document.getElementById('painel-content').innerHTML=this.renderAgenda();
     this.showToast('🚫 Cliente bloqueado!');
@@ -1307,7 +1322,7 @@ const App = {
     }
     const novoProf=await DB.addProfissional(this.cache.negocioId,nome,'');
     if(this._novoProfFotoFile&&novoProf&&novoProf.id){
-      const result=await DB.uploadImagem(`profissionais/${novoProf.id}`,this._novoProfFotoFile);
+      const result=await DB.uploadImagem(`profissionais/${novoProf.id}/foto`,this._novoProfFotoFile);
       if(!result.error)await DB.updateProfissionalFoto(novoProf.id,result.url);
     }
     this._novoProfFoto=null;
@@ -1320,7 +1335,7 @@ const App = {
   async uploadFotoProf(e,profId){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
-    const result=await DB.uploadImagem(`profissionais/${profId}`,file);
+    const result=await DB.uploadImagem(`profissionais/${profId}/foto`,file);
     if(result.error){this.showToast('⚠️ Erro ao enviar foto: '+result.error);return}
     await DB.updateProfissionalFoto(profId,result.url);
     await this.refreshPainelContent();
@@ -1329,7 +1344,7 @@ const App = {
   },
 
   async removerFotoProf(profId){
-    await DB.removerImagem(`profissionais/${profId}`);
+    await DB.removerImagem(`profissionais/${profId}/foto`);
     await DB.updateProfissionalFoto(profId,'');
     await this.refreshPainelContent();
     document.getElementById('painel-content').innerHTML=this.renderProfissionais();
@@ -1727,6 +1742,13 @@ const App = {
       </div>
 
       <div class="add-form">
+        <div class="add-form-title">📱 Seu WhatsApp</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Usado pra você receber notificações automáticas de novos agendamentos e cancelamentos.</div>
+        <div class="form-group"><input class="form-input no-icon" type="tel" id="cfg-telefone" value="${esc(negocio.telefone)}" placeholder="(11) 99999-9999"></div>
+        <button class="btn-primary" onclick="App.salvarTelefone()">Salvar WhatsApp</button>
+      </div>
+
+      <div class="add-form">
         <div class="add-form-title">🖼️ Logo e capa</div>
         <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:16px;">
           <div>
@@ -1767,11 +1789,19 @@ const App = {
     this.showToast('✅ Nome atualizado!');
   },
 
+  async salvarTelefone(){
+    const telefone=document.getElementById('cfg-telefone').value.trim();
+    if(!telefone){this.showToast('⚠️ Digite o WhatsApp');return}
+    await DB.updateNegocio(this.cache.negocioId,{telefone});
+    this.cache.negocio.telefone=telefone;
+    this.showToast('✅ WhatsApp salvo!');
+  },
+
   async uploadLogo(e){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     this.showToast('⏳ Enviando logo...');
-    const result=await DB.uploadImagem(`logos/${this.cache.negocioId}`,file);
+    const result=await DB.uploadImagem(`logos/${this.cache.negocioId}/logo`,file);
     if(result.error){this.showToast('⚠️ Erro ao enviar logo: '+result.error);return}
     await DB.updateNegocio(this.cache.negocioId,{logo:result.url});
     this.cache.negocio.logo=result.url;
@@ -1785,7 +1815,7 @@ const App = {
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     this.showToast('⏳ Enviando capa...');
-    const result=await DB.uploadImagem(`capas/${this.cache.negocioId}`,file);
+    const result=await DB.uploadImagem(`capas/${this.cache.negocioId}/capa`,file);
     if(result.error){this.showToast('⚠️ Erro ao enviar capa: '+result.error);return}
     await DB.updateNegocio(this.cache.negocioId,{capa:result.url});
     this.cache.negocio.capa=result.url;
@@ -2246,6 +2276,7 @@ const App = {
 
   async cancelarMeuAgendamento(agId){
     await DB.updateStatus(agId,'cancelado');
+    this.notificar(agId,'cancelado_pelo_cliente');
     const clienteSession=await DB.getClienteAtual();
     const ags=(await DB.getAgendamentosByCliente(clienteSession.id)).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
     const todayStr=new Date().toISOString().split('T')[0];
@@ -2421,6 +2452,7 @@ const App = {
       profissionalId:this.selectedProfissional.id,data:this.selectedData,hora:this.selectedHora,codigo
     });
     if(result.error){this.showToast('⚠️ Erro ao agendar. Tente novamente.');return}
+    this.notificar(result.ag.id,'nova_reserva');
 
     const d=new Date(this.selectedData+'T12:00:00');
     const fmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
@@ -2501,7 +2533,7 @@ const App = {
             <div style="font-size:13px;color:#991b1b;font-weight:600;margin-bottom:4px;">⚠️ Atenção</div>
             <div style="font-size:12px;color:#b91c1c;line-height:1.5;">Ao cancelar, o horário ficará disponível para outros clientes. Esta ação não pode ser desfeita.</div>
           </div>
-          <button class="btn-primary" style="background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 20px rgba(239,68,68,.3);" onclick="App.clienteCancelar('${codigo}')">❌ Cancelar meu agendamento</button>
+          <button class="btn-primary" style="background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 20px rgba(239,68,68,.3);" onclick="App.clienteCancelar('${codigo}','${ag.id}')">❌ Cancelar meu agendamento</button>
           <button onclick="App.navigate('agendar/${negocioObj?negocioObj.slug:''}')" style="width:100%;margin-top:10px;padding:13px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">← Voltar</button>`
       }`;
   },
@@ -2512,8 +2544,9 @@ const App = {
     this.navigate('cancelar/'+codigo);
   },
 
-  async clienteCancelar(codigo){
+  async clienteCancelar(codigo,agId){
     await DB.cancelarPorCodigo(codigo);
+    if(agId)this.notificar(agId,'cancelado_pelo_cliente',codigo);
     document.getElementById('cancelar-body').innerHTML=`
       <div style="text-align:center;padding:40px 0;">
         <div style="font-size:56px;margin-bottom:16px;">✅</div>
