@@ -267,14 +267,17 @@ const DB = {
   async registerDono(nome,email,senha,slug,nomeBarbearia){
     const {data:existing}=await sb.from('negocios').select('id').eq('slug',slug).maybeSingle();
     if(existing)return{error:'Link já em uso, escolha outro'};
-    const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,role:'dono'}}});
+    // guarda nomeBarbearia/slug junto com a conta — precisamos deles depois,
+    // no primeiro login (a conta só ganha sessão válida após confirmar o e-mail)
+    const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,nomeBarbearia,slug,role:'dono'}}});
     if(signErr)return{error:signErr.message.includes('registered')?'E-mail já cadastrado':signErr.message};
     if(!signData.session){return{precisaConfirmarEmail:true}}
     return await this.criarInfraestruturaNegocio(signData.user.id,nome,slug,nomeBarbearia);
   },
 
   // Cria negócio + serviço padrão + profissional + horários + trial de 14 dias.
-  // Reutilizado tanto no cadastro normal quanto no primeiro login via Google.
+  // Reutilizado no cadastro normal, no primeiro login via Google e no primeiro
+  // login após confirmar e-mail (quando a infraestrutura ainda não existe).
   async criarInfraestruturaNegocio(userId,nome,slug,nomeBarbearia){
     const {data:negocioRow,error:negErr}=await sb.from('negocios').insert({dono_id:userId,nome:nomeBarbearia,slug,telefone:'',logo:'',capa:''}).select().single();
     if(negErr)return{error:negErr.message.includes('duplicate')?'Link já em uso, escolha outro':'Erro ao criar barbearia: '+negErr.message};
@@ -304,8 +307,15 @@ const DB = {
     const {data:{user}}=await sb.auth.getUser();
     if(!user)return null;
     const {data:negocioRow}=await sb.from('negocios').select('*').eq('dono_id',user.id).maybeSingle();
-    if(!negocioRow)return null;
-    return{userId:user.id,nome:(user.user_metadata&&user.user_metadata.nome)||'',negocio:mapNegocio(negocioRow)};
+    if(negocioRow)return{userId:user.id,nome:(user.user_metadata&&user.user_metadata.nome)||'',negocio:mapNegocio(negocioRow)};
+    // primeira vez logando após confirmar e-mail: a infraestrutura ainda não
+    // existe (só dava pra criar depois de ter sessão válida) — cria agora
+    const meta=user.user_metadata||{};
+    if(meta.role==='dono'&&meta.slug&&meta.nomeBarbearia){
+      const result=await this.criarInfraestruturaNegocio(user.id,meta.nome||'',meta.slug,meta.nomeBarbearia);
+      if(result.negocio)return{userId:user.id,nome:meta.nome||'',negocio:result.negocio};
+    }
+    return null;
   },
 
   // ============================================
@@ -375,7 +385,9 @@ const DB = {
   // AUTH — CLIENTE (conta global)
   // ============================================
   async registerCliente(nome,email,tel,senha){
-    const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,role:'cliente'}}});
+    // guarda o telefone junto com a conta — precisamos dele depois, no
+    // primeiro login (a conta só ganha sessão válida após confirmar o e-mail)
+    const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,tel,role:'cliente'}}});
     if(signErr)return{error:signErr.message.includes('registered')?'E-mail já cadastrado':signErr.message};
     if(!signData.session){return{precisaConfirmarEmail:true}}
     return await this.criarPerfilCliente(signData.user.id,nome,email,tel);
@@ -391,8 +403,16 @@ const DB = {
     const {data,error}=await sb.auth.signInWithPassword({email,password:senha});
     if(error)return{error:error.message.includes('Email not confirmed')?'Confirme seu e-mail antes de entrar — verifique sua caixa de entrada.':'E-mail ou senha incorretos.'};
     const {data:clienteRow}=await sb.from('clientes').select('*').eq('id',data.user.id).maybeSingle();
-    if(!clienteRow){await sb.auth.signOut();return{error:'Esta conta não é de cliente.'}}
-    return{cliente:mapCliente(clienteRow)};
+    if(clienteRow)return{cliente:mapCliente(clienteRow)};
+    // primeira vez logando após confirmar e-mail: o perfil ainda não existe
+    // (só dava pra criar depois de ter sessão válida) — cria agora
+    const meta=data.user.user_metadata||{};
+    if(meta.role==='cliente'){
+      const result=await this.criarPerfilCliente(data.user.id,meta.nome||'',data.user.email,meta.tel||'');
+      if(result.cliente)return{cliente:result.cliente};
+    }
+    await sb.auth.signOut();
+    return{error:'Esta conta não é de cliente.'};
   },
 
   async getClienteAtual(){
