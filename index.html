@@ -271,6 +271,7 @@ const DB = {
     // no primeiro login (a conta só ganha sessão válida após confirmar o e-mail)
     const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,nomeBarbearia,slug,role:'dono'}}});
     if(signErr)return{error:signErr.message.includes('registered')?'E-mail já cadastrado':signErr.message};
+    if(signData.user&&!(signData.user.identities&&signData.user.identities.length>0)){return{error:'Este e-mail já está cadastrado. Tente entrar, ou use "Continuar com Google" se foi assim que você criou a conta.'}}
     if(!signData.session){return{precisaConfirmarEmail:true}}
     return await this.criarInfraestruturaNegocio(signData.user.id,nome,slug,nomeBarbearia);
   },
@@ -389,6 +390,7 @@ const DB = {
     // primeiro login (a conta só ganha sessão válida após confirmar o e-mail)
     const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,tel,role:'cliente'}}});
     if(signErr)return{error:signErr.message.includes('registered')?'E-mail já cadastrado':signErr.message};
+    if(signData.user&&!(signData.user.identities&&signData.user.identities.length>0)){return{error:'Este e-mail já está cadastrado. Tente entrar, ou use "Esqueci minha senha" se não lembrar o acesso.'}}
     if(!signData.session){return{precisaConfirmarEmail:true}}
     return await this.criarPerfilCliente(signData.user.id,nome,email,tel);
   },
