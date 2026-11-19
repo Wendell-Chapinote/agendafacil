@@ -737,7 +737,7 @@ async init(){
       this.showToast('⚠️ '+result.error);
       btn.textContent='Confirmar Agendamento'; btn.disabled=false;
       return;
-    }
+    },
   
   updateSlugPreview(){
     const v=document.getElementById('reg-slug').value.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
