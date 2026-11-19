@@ -1770,7 +1770,7 @@ async init(){
     if(pTitle) pTitle.textContent=nome;
   },
 
-  async uploadLogo(e){
+   async uploadLogo(e){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     this.showToast('⏳ Enviando logo...');
@@ -1812,14 +1812,11 @@ async init(){
     this._toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
   },
 
-  // ============================================
-  // FLUXO DO CLIENTE (PÚBLICO)
-  // ============================================
   async showAgendarPage(slug){
     this.currentSlug=slug;
     const negocio=await DB.getNegocio(slug);
     if(!negocio){
-      document.getElementById('app').innerHTML='<div style="padding:40px;text-align:center;color:white;background:var(--dark);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="font-size:40px;margin-bottom:16px;">🤔</div><div>Barbearia não encontrada.</div><a href="#" style="color:var(--gold);margin-top:16px;text-decoration:underline;" onclick="App.navigate('')">Voltar ao início</a></div>';
+      document.getElementById('app').innerHTML='<div style="padding:40px;text-align:center;color:white;background:var(--dark);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="font-size:40px;margin-bottom:16px;">🤔</div><div>Barbearia não encontrada.</div><a href="#" style="color:var(--gold);margin-top:16px;text-decoration:underline;" onclick="App.navigate(\'\')">Voltar ao início</a></div>';
       return;
     }
     this.currentNegocio=negocio;
@@ -1827,6 +1824,8 @@ async init(){
     const servicos=await DB.getServicos(negocio.id);
     const profissionais=await DB.getProfissionais(negocio.id);
     const horarios=await DB.getHorariosTodos(negocio.id);
+    this.servicosCache = servicos;
+    this.profissionaisCache = profissionais;
 
     document.getElementById('app').innerHTML=`
     <div class="app-wrap">
@@ -2014,12 +2013,6 @@ async init(){
       aIni=aI*60+amI;aFim=aF*60+amF;
     }
 
-    const serv=this.currentNegocio && App.currentNegocio ? null : null;
-    // Para simplificar, precisamos da duração do serviço selecionado
-    // Mas o this.currentNegocio não tem os serviços. Vamos buscar.
-    // Melhor: buscar duração no momento do clique. Porém, como o HTML é gerado agora,
-    // vamos apenas calcular com 30 min fixos se não achar, mas isso é impreciso.
-    // CORREÇÃO: Vamos usar um cache de serviços.
     const duracao=this.servicosCache ? (this.servicosCache.find(s=>s.id===this.selectedServico)||{}).duracao||30 : 30;
 
     let html='<div class="time-grid">';
@@ -2131,9 +2124,6 @@ async init(){
     </div>`;
   },
 
-  // ============================================
-  // LOGIN E CADASTRO DO CLIENTE
-  // ============================================
   showClienteLoginGeral(){
     document.getElementById('app').innerHTML=`
     <div class="app-wrap"><div class="auth-wrap">
@@ -2212,9 +2202,6 @@ async init(){
     </div>`;
   },
 
-  // ============================================
-  // MEUS AGENDAMENTOS
-  // ============================================
   async showMeusAgendamentos(){
     const cliente=await DB.getClienteAtual();
     if(!cliente){this.navigate('cliente-login');return}
@@ -2278,9 +2265,6 @@ async init(){
     this.navigate('');
   },
 
-  // ============================================
-  // CANCELAMENTO PÚBLICO POR CÓDIGO
-  // ============================================
   async showCancelarPage(codigo){
     const ag=codigo?await DB.buscarPorCodigo(codigo):null;
     document.getElementById('app').innerHTML=`
@@ -2318,15 +2302,12 @@ async init(){
 
   async cancelarPublico(id){
     if(!confirm('Tem certeza que quer cancelar?'))return;
-    await DB.updateStatus(id,'cancelado'); // No fluxo público, id direto é arriscado, mas o RPC já protege.
+    await DB.updateStatus(id,'cancelado');
     this.showToast('✅ Agendamento cancelado');
     this.navigate('');
   }
 };
 
-// ============================================
-// INICIALIZAÇÃO
-// ============================================
 window.addEventListener('DOMContentLoaded', () => {
   App.init();
 });
