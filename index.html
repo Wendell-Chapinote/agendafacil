@@ -581,25 +581,32 @@ const App = {
   calMonth:new Date().getMonth(),calYear:new Date().getFullYear(),
   cache:{negocioId:null,negocio:null,servicos:[],profissionais:[],agendamentos:[],horarios:{},bloqueios:[]},
 
-  async init(){
-    const oauthIntent=new URLSearchParams(location.search).get('oauth_intent');
-    if(oauthIntent){
-      history.replaceState(null,'',location.pathname+location.hash);
-      const tratado=await this.tratarRetornoGoogle(oauthIntent);
-      if(tratado)return;
-    }
+   async init(){
+    try {
+      const oauthIntent=new URLSearchParams(location.search).get('oauth_intent');
+      if(oauthIntent){
+        history.replaceState(null,'',location.pathname+location.hash);
+        const tratado=await this.tratarRetornoGoogle(oauthIntent);
+        if(tratado)return;
+      }
 
-    const hash=location.hash.replace('#','')||'';
-    const parts=hash.split('/');
-    if(parts[0]==='agendar'&&parts[1])await this.showAgendarPage(parts[1]);
-    else if(parts[0]==='cancelar')await this.showCancelarPage(parts[1]||'');
-    else if(parts[0]==='meus-agendamentos')await this.showMeusAgendamentos();
-    else if(parts[0]==='painel')await this.checkAuthAndShowPainel();
-    else if(parts[0]==='login')this.showLogin();
-    else if(parts[0]==='register')this.showRegister();
-    else if(parts[0]==='cliente-login')this.showClienteLoginGeral();
-    else if(parts[0]==='cliente-register')this.showClienteRegisterGeral();
-    else await this.showHome();
+      const hash=location.hash.replace('#','')||'';
+      const parts=hash.split('/');
+      
+      if(parts[0]==='agendar'&&parts[1])await this.showAgendarPage(parts[1]);
+      else if(parts[0]==='cancelar')await this.showCancelarPage(parts[1]||'');
+      else if(parts[0]==='meus-agendamentos')await this.showMeusAgendamentos();
+      else if(parts[0]==='painel')await this.checkAuthAndShowPainel();
+      else if(parts[0]==='login')this.showLogin();
+      else if(parts[0]==='register')this.showRegister();
+      else if(parts[0]==='cliente-login')this.showClienteLoginGeral();
+      else if(parts[0]==='cliente-register')this.showClienteRegisterGeral();
+      else await this.showHome();
+    } catch (e) {
+      console.error("Erro na inicialização:", e);
+      // Se der qualquer erro (ex: tabela bloqueada), mostra um botão para o usuário não ficar preso
+      document.getElementById('app').innerHTML = '<div style="padding:20px;text-align:center;color:white;background:#1A1A1A;min-height:100vh;display:flex;flex-direction:column;justify-content:center;"><h2>Ops, algo falhou.</h2><p style="font-size:12px;margin:10px 0;">'+e.message+'</p><button onclick="location.reload()" style="padding:10px;background:gold;border:none;border-radius:5px;">Recarregar</button></div>';
+    }
   },
 
   async tratarRetornoGoogle(intent){
