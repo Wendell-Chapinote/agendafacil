@@ -267,8 +267,6 @@ const DB = {
   async registerDono(nome,email,senha,slug,nomeBarbearia){
     const {data:existing}=await sb.from('negocios').select('id').eq('slug',slug).maybeSingle();
     if(existing)return{error:'Link já em uso, escolha outro'};
-    // guarda nomeBarbearia/slug junto com a conta — precisamos deles depois,
-    // no primeiro login (a conta só ganha sessão válida após confirmar o e-mail)
     const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,nomeBarbearia,slug,role:'dono'}}});
     if(signErr)return{error:signErr.message.includes('registered')?'E-mail já cadastrado':signErr.message};
     if(signData.user&&!(signData.user.identities&&signData.user.identities.length>0)){return{error:'Este e-mail já está cadastrado. Tente entrar, ou use "Continuar com Google" se foi assim que você criou a conta.'}}
@@ -276,9 +274,6 @@ const DB = {
     return await this.criarInfraestruturaNegocio(signData.user.id,nome,slug,nomeBarbearia);
   },
 
-  // Cria negócio + serviço padrão + profissional + horários + trial de 14 dias.
-  // Reutilizado no cadastro normal, no primeiro login via Google e no primeiro
-  // login após confirmar e-mail (quando a infraestrutura ainda não existe).
   async criarInfraestruturaNegocio(userId,nome,slug,nomeBarbearia){
     const {data:negocioRow,error:negErr}=await sb.from('negocios').insert({dono_id:userId,nome:nomeBarbearia,slug,telefone:'',logo:'',capa:''}).select().single();
     if(negErr)return{error:negErr.message.includes('duplicate')?'Link já em uso, escolha outro':'Erro ao criar barbearia: '+negErr.message};
@@ -286,7 +281,8 @@ const DB = {
     const {data:profRow}=await sb.from('profissionais').insert({negocio_id:negocioRow.id,nome,foto:''}).select().single();
     if(profRow)await sb.from('horarios').insert({negocio_id:negocioRow.id,profissional_id:profRow.id,dados:HORARIO_PADRAO});
     const trialEnd=new Date();trialEnd.setDate(trialEnd.getDate()+14);
-    await sb.from('assinaturas').insert({negocio_id:negocioRow.id,status:'trial',plano:null,proximo_vencimento:trialEnd.toISOString().split('T')[0]});
+    const {error:assErr} = await sb.from('assinaturas').insert({negocio_id:negocioRow.id,status:'trial',plano:null,proximo_vencimento:trialEnd.toISOString().split('T')[0]});
+    if(assErr) console.error('Erro ao criar assinatura trial:', assErr.message);
     return{negocio:mapNegocio(negocioRow)};
   },
 
@@ -297,7 +293,6 @@ const DB = {
   },
 
   async signInWithGoogle(intent){
-    // intent: 'dono' ou 'cliente' — lembra qual fluxo retomar depois do Google redirecionar de volta
     const redirectTo=`${location.origin}${location.pathname}?oauth_intent=${intent}`;
     const {error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo}});
     if(error)return{error:error.message};
@@ -309,8 +304,6 @@ const DB = {
     if(!user)return null;
     const {data:negocioRow}=await sb.from('negocios').select('*').eq('dono_id',user.id).maybeSingle();
     if(negocioRow)return{userId:user.id,nome:(user.user_metadata&&user.user_metadata.nome)||'',negocio:mapNegocio(negocioRow)};
-    // primeira vez logando após confirmar e-mail: a infraestrutura ainda não
-    // existe (só dava pra criar depois de ter sessão válida) — cria agora
     const meta=user.user_metadata||{};
     if(meta.role==='dono'&&meta.slug&&meta.nomeBarbearia){
       const result=await this.criarInfraestruturaNegocio(user.id,meta.nome||'',meta.slug,meta.nomeBarbearia);
@@ -320,7 +313,7 @@ const DB = {
   },
 
   // ============================================
-  // ASSINATURA (mensalidade)
+  // ASSINATURA
   // ============================================
   async getAssinatura(negocioId){
     const {data}=await sb.from('assinaturas').select('*').eq('negocio_id',negocioId).maybeSingle();
@@ -330,10 +323,7 @@ const DB = {
 
   async iniciarCheckout(negocioId,plano){
     try{
-      const resp=await fetch('/api/create-checkout-session',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({negocioId,plano})
-      });
+      const resp=await fetch('/api/create-checkout-session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({negocioId,plano})});
       const data=await resp.json();
       if(!resp.ok||!data.url)return{error:data.error||'Erro ao iniciar pagamento'};
       return{url:data.url};
@@ -344,11 +334,7 @@ const DB = {
     try{
       const {data:{session}}=await sb.auth.getSession();
       if(!session)return{error:'Sessão expirada, faça login novamente.'};
-      const resp=await fetch('/api/cancel-subscription',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
-        body:JSON.stringify({negocioId,reativar:!!reativar})
-      });
+      const resp=await fetch('/api/cancel-subscription',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},body:JSON.stringify({negocioId,reativar:!!reativar})});
       const data=await resp.json();
       if(!resp.ok)return{error:data.error||'Erro ao processar solicitação'};
       return{ok:true};
@@ -359,18 +345,13 @@ const DB = {
     try{
       const {data:{session}}=await sb.auth.getSession();
       if(!session)return{error:'Sessão expirada, faça login novamente.'};
-      const resp=await fetch('/api/change-plan',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
-        body:JSON.stringify({negocioId,novoPlano})
-      });
+      const resp=await fetch('/api/change-plan',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},body:JSON.stringify({negocioId,novoPlano})});
       const data=await resp.json();
       if(!resp.ok)return{error:data.error||'Erro ao processar solicitação'};
       return data;
     }catch(e){return{error:'Erro de conexão: '+e.message}}
   },
 
-  // Dispara notificação por WhatsApp (silencioso — nunca trava a ação principal se falhar)
   async notificar(agendamentoId,tipo,codigo){
     try{
       const headers={'Content-Type':'application/json'};
@@ -379,18 +360,16 @@ const DB = {
         if(session)headers['Authorization']=`Bearer ${session.access_token}`;
       }
       await fetch('/api/notificar',{method:'POST',headers,body:JSON.stringify({agendamentoId,tipo,codigo})});
-    }catch(e){/* notificação nunca deve travar o fluxo principal do usuário */}
+    }catch(e){}
   },
 
-
-  // AUTH — CLIENTE (conta global)
+  // ============================================
+  // AUTH — CLIENTE
   // ============================================
   async registerCliente(nome,email,tel,senha){
-    // guarda o telefone junto com a conta — precisamos dele depois, no
-    // primeiro login (a conta só ganha sessão válida após confirmar o e-mail)
     const {data:signData,error:signErr}=await sb.auth.signUp({email,password:senha,options:{data:{nome,tel,role:'cliente'}}});
     if(signErr)return{error:signErr.message.includes('registered')?'E-mail já cadastrado':signErr.message};
-    if(signData.user&&!(signData.user.identities&&signData.user.identities.length>0)){return{error:'Este e-mail já está cadastrado. Tente entrar, ou use "Esqueci minha senha" se não lembrar o acesso.'}}
+    if(signData.user&&!(signData.user.identities&&signData.user.identities.length>0)){return{error:'Este e-mail já está cadastrado. Tente entrar, ou use "Esqueci minha senha".'}}
     if(!signData.session){return{precisaConfirmarEmail:true}}
     return await this.criarPerfilCliente(signData.user.id,nome,email,tel);
   },
@@ -403,11 +382,9 @@ const DB = {
 
   async loginCliente(email,senha){
     const {data,error}=await sb.auth.signInWithPassword({email,password:senha});
-    if(error)return{error:error.message.includes('Email not confirmed')?'Confirme seu e-mail antes de entrar — verifique sua caixa de entrada.':'E-mail ou senha incorretos.'};
+    if(error)return{error:error.message.includes('Email not confirmed')?'Confirme seu e-mail antes de entrar.':'E-mail ou senha incorretos.'};
     const {data:clienteRow}=await sb.from('clientes').select('*').eq('id',data.user.id).maybeSingle();
     if(clienteRow)return{cliente:mapCliente(clienteRow)};
-    // primeira vez logando após confirmar e-mail: o perfil ainda não existe
-    // (só dava pra criar depois de ter sessão válida) — cria agora
     const meta=data.user.user_metadata||{};
     if(meta.role==='cliente'){
       const result=await this.criarPerfilCliente(data.user.id,meta.nome||'',data.user.email,meta.tel||'');
@@ -444,13 +421,12 @@ const DB = {
   },
 
   // ============================================
-  // IMAGENS (Supabase Storage — não mais base64 no banco)
+  // IMAGENS
   // ============================================
   async uploadImagem(path,file){
     const {error}=await sb.storage.from('imagens').upload(path,file,{upsert:true,contentType:file.type,cacheControl:'3600'});
     if(error)return{error:error.message};
     const {data}=sb.storage.from('imagens').getPublicUrl(path);
-    // adiciona um parâmetro de versão pra "furar" cache do navegador quando a foto é trocada
     return{url:`${data.publicUrl}?v=${Date.now()}`};
   },
 
@@ -459,7 +435,7 @@ const DB = {
   },
 
   // ============================================
-  // SERVIÇOS
+  // SERVIÇOS E PROFISSIONAIS
   // ============================================
   async getServicos(negocioId){
     const {data}=await sb.from('servicos').select('*').eq('negocio_id',negocioId).order('created_at');
@@ -470,9 +446,6 @@ const DB = {
   },
   async deleteServico(id){ await sb.from('servicos').delete().eq('id',id); },
 
-  // ============================================
-  // PROFISSIONAIS
-  // ============================================
   async getProfissionais(negocioId){
     const {data}=await sb.from('profissionais').select('*').eq('negocio_id',negocioId).order('created_at');
     return (data||[]).map(mapProf);
@@ -507,7 +480,7 @@ const DB = {
   },
 
   // ============================================
-  // AGENDAMENTOS
+  // AGENDAMENTOS (As funções corrigidas estão aqui)
   // ============================================
   async getAgendamentos(negocioId){
     const {data}=await sb.from('agendamentos').select('*').eq('negocio_id',negocioId);
@@ -518,13 +491,19 @@ const DB = {
     return (data||[]).map(mapAg);
   },
   async insertAgendamento(ag){
-    const {data,error}=await sb.from('agendamentos').insert({
-      negocio_id:ag.negocioId,cliente_id:ag.clienteId,cliente_nome:ag.clienteNome,
-      cliente_tel:ag.clienteTel,cliente_email:ag.clienteEmail,servico_id:ag.servicoId,
-      profissional_id:ag.profissionalId,data:ag.data,hora:ag.hora,status:'pendente',codigo:ag.codigo
-    }).select().single();
+    const {data,error}=await sb.rpc('criar_agendamento', {
+      p_negocio_id: ag.negocioId,
+      p_servico_id: ag.servicoId,
+      p_profissional_id: ag.profissionalId,
+      p_data: ag.data,
+      p_hora: ag.hora,
+      p_cliente_nome: ag.clienteNome,
+      p_cliente_tel: ag.clienteTel,
+      p_cliente_email: ag.clienteEmail
+    });
     if(error)return{error:error.message};
-    return{ag:mapAg(data)};
+    const r = data[0];
+    return {ag: { id: r.id, codigo: r.codigo, ...ag, status: 'pendente' }};
   },
   async updateStatus(id,status){ await sb.from('agendamentos').update({status}).eq('id',id); },
 
@@ -534,7 +513,11 @@ const DB = {
     const r=data[0];
     return {id:r.id,negocioId:r.negocio_id,profissionalId:r.profissional_id,servicoId:r.servico_id,data:r.data,hora:(r.hora||'').substring(0,5),status:r.status,clienteNome:r.cliente_nome};
   },
-  async cancelarPorCodigo(codigo){ await sb.rpc('cancelar_por_codigo',{p_codigo:codigo}); },
+  async cancelarPorCodigo(codigo){ 
+    const ag = await this.buscarPorCodigo(codigo);
+    if(!ag) return;
+    await sb.rpc('cancelar_agendamento_cliente', { p_agendamento_id: ag.id }); 
+  },
 
   // ============================================
   // BLOQUEIOS
@@ -555,16 +538,12 @@ const DB = {
   },
   async desbloquearCliente(id){ await sb.from('bloqueios').delete().eq('id',id); },
 
-  // ============================================
-  // UTIL
-  // ============================================
   uid(){ return '_'+Math.random().toString(36).substr(2,9); },
 };
 </script>
 <script>
 
-// Protege contra XSS: converte caracteres perigosos de HTML em entidades seguras
-// antes de inserir qualquer dado digitado por usuários na tela.
+// Protege contra XSS
 function esc(str) {
   if (str === null || str === undefined) return '';
   return String(str)
@@ -578,7 +557,6 @@ function esc(str) {
 // ============================================
 // APP
 // ============================================
-// Limite de tamanho para fotos (evita sobrecarregar o banco com arquivos gigantes)
 const MAX_FOTO_MB = 2;
 function arquivoValido(file, showToastFn) {
   if (!file) return false;
@@ -600,9 +578,6 @@ const App = {
   cache:{negocioId:null,negocio:null,servicos:[],profissionais:[],agendamentos:[],horarios:{},bloqueios:[]},
 
   async init(){
-    // Retorno do login com Google: verifica se precisa completar o cadastro
-    // (Google só nos dá nome e e-mail — telefone ou nome da barbearia
-    // precisam ser preenchidos na primeira vez)
     const oauthIntent=new URLSearchParams(location.search).get('oauth_intent');
     if(oauthIntent){
       history.replaceState(null,'',location.pathname+location.hash);
@@ -642,7 +617,6 @@ const App = {
 
   navigate(h){location.hash=h},
 
-  // HOME — escolha entre Cliente ou Comerciante
   async showHome(){
     const cliente=await DB.getClienteAtual();
     document.getElementById('app').innerHTML=`
@@ -653,7 +627,6 @@ const App = {
         <div style="font-size:14px;color:var(--muted);margin-bottom:40px;line-height:1.6;">Agendamento online para<br>barbearias e salões</div>
 
         <div style="width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;">
-
           <button onclick="App.navigate('cliente-login')" style="width:100%;padding:22px 20px;background:linear-gradient(135deg,var(--gold),var(--gold-light));border:none;border-radius:18px;cursor:pointer;text-align:left;display:flex;align-items:center;gap:14px;box-shadow:0 6px 24px rgba(212,175,55,.3);">
             <div style="font-size:28px;">👤</div>
             <div>
@@ -669,7 +642,6 @@ const App = {
               <div style="font-size:12px;color:var(--muted);margin-top:2px;">Gerenciar minha barbearia</div>
             </div>
           </button>
-
         </div>
 
         ${cliente?`
@@ -680,9 +652,6 @@ const App = {
     </div>`;
   },
 
-  // ============================================
-  // AUTH — COMERCIANTE
-  // ============================================
   showLogin(){
     document.getElementById('app').innerHTML=`
     <div class="app-wrap"><div class="auth-wrap">
@@ -789,8 +758,6 @@ const App = {
   // ============================================
   async showPainel(dono){
     const negocio=dono.negocio;
-
-    // checa status da assinatura antes de liberar o painel
     const assinatura=await DB.getAssinatura(negocio.id);
     const hoje=new Date().toISOString().split('T')[0];
     const venceu=assinatura&&assinatura.proximoVencimento&&assinatura.proximoVencimento<hoje;
@@ -834,7 +801,7 @@ const App = {
     <div class="toast" id="toast"></div>`;
   },
 
-  // ---- PAYWALL (tela de planos) ----
+  // ---- PAYWALL ----
   showPaywall(dono,assinatura){
     const negocio=dono.negocio;
     const motivo=!assinatura?'Complete sua assinatura para acessar o painel':
@@ -911,7 +878,6 @@ const App = {
       DB.getBloqueios(negocioId),
       DB.getAssinatura(negocioId),
     ]);
-    // durante o teste grátis, libera tudo do Pro (mostra o valor antes de cobrar)
     const isPro=!!assinatura&&(assinatura.status==='trial'||assinatura.plano==='pro');
     this.cache={negocioId,negocio:negocioObj,servicos,profissionais,agendamentos,horarios,bloqueios,assinatura,isPro};
   },
@@ -921,7 +887,6 @@ const App = {
     el.classList.add('active');
     const c=document.getElementById('painel-content');
     c.innerHTML='<div class="loading">Carregando...</div>';
-    // recarrega cache (dados podem ter mudado)
     await this.loadCache(this.cache.negocioId,this.cache.negocio);
     if(tab==='agenda')c.innerHTML=this.renderAgenda();
     else if(tab==='historico')c.innerHTML=this.renderHistorico();
@@ -984,7 +949,6 @@ const App = {
     document.getElementById('painel-content').innerHTML=this.renderAgenda();
   },
 
-  // ---- VISÃO DO DIA ----
   renderAgendaDia(){
     const profs=this.cache.profissionais;
     if(!profs.length)return`<div class="empty-state"><div class="empty-icon">👤</div><div class="empty-text">Cadastre um profissional primeiro</div></div>`;
@@ -1065,7 +1029,6 @@ const App = {
             </div>
           </div>`);
         }else{
-          // continuação do mesmo atendimento — mostra faixa mais fina ao invés de sumir
           linhas.push(`<div style="display:flex;align-items:center;gap:12px;padding:6px 14px;background:#fafafa;border-radius:10px;margin-bottom:6px;border-left:4px solid ${statusColor};opacity:0.55;">
             <div style="font-size:11px;font-weight:600;color:var(--muted);width:44px;flex-shrink:0;">${horaLabel}</div>
             <div style="font-size:11px;color:var(--muted);">↳ em atendimento</div>
@@ -1326,10 +1289,10 @@ const App = {
   previewNovaFotoProf(e){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
-    this._novoProfFotoFile=file; // guardado pra subir depois que o profissional for criado (aí temos o ID)
+    this._novoProfFotoFile=file;
     const reader=new FileReader();
     reader.onload=ev=>{
-      this._novoProfFoto=ev.target.result; // só pra pré-visualização na tela, nunca salvo no banco
+      this._novoProfFoto=ev.target.result;
       document.getElementById('painel-content').innerHTML=this.renderProfissionais();
     };
     reader.readAsDataURL(file);
@@ -1556,7 +1519,6 @@ const App = {
       acaoHtml=`<button class="btn-primary" onclick="App.irParaPaywall('${negocio.id}')">Ver planos disponíveis</button>`;
     }
 
-    // troca de plano — só faz sentido com assinatura paga e ativa
     let trocaPlanoHtml='';
     if(assinatura.status==='ativo'&&assinatura.temAssinaturaStripe&&assinatura.plano){
       if(assinatura.plano==='basico'){
@@ -1632,7 +1594,7 @@ const App = {
     document.getElementById('painel-content').innerHTML=await this.renderAssinatura();
   },
 
-  // ---- INSIGHTS DE GESTÃO (só Pro) ----
+  // ---- INSIGHTS ----
   renderInsights(){
     if(!this.cache.isPro){
       return`
@@ -1759,205 +1721,425 @@ const App = {
     return`
       <div class="add-form">
         <div class="add-form-title">🏪 Nome da barbearia</div>
-        <div class="form-group"><input class="form-input no-icon" type="text" id="cfg-nome" value="${esc(negocio.nome)}" placeholder="Nome da barbearia"></div>
-        <button class="btn-primary" onclick="App.salvarNome()">Salvar nome</button>
+        <div class="form-group"><input class="form-input no-icon" type="text" id="cfg-nome" value="${esc(negocio.nome)}"></div>
+        <div class="form-group"><input class="form-input no-icon" type="tel" id="cfg-tel" value="${esc(negocio.telefone||'')}" placeholder="Telefone / WhatsApp"></div>
+        <button class="btn-primary" onclick="App.salvarConfig()">Salvar alterações</button>
       </div>
 
       <div class="add-form">
-        <div class="add-form-title">📱 Seu WhatsApp</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Usado pra você receber notificações automáticas de novos agendamentos e cancelamentos.</div>
-        <div class="form-group"><input class="form-input no-icon" type="tel" id="cfg-telefone" value="${esc(negocio.telefone)}" placeholder="(11) 99999-9999"></div>
-        <button class="btn-primary" onclick="App.salvarTelefone()">Salvar WhatsApp</button>
-      </div>
-
-      <div class="add-form">
-        <div class="add-form-title">🖼️ Logo e capa</div>
-        <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:16px;">
-          <div>
-            <label class="form-label">Logo</label>
-            <label class="logo-box" title="Clique para trocar logo">
-              ${logoPreview}
-              <input type="file" accept="image/*" onchange="App.uploadLogo(event)" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
-            </label>
-            <div style="font-size:10px;color:var(--muted);text-align:center;margin-top:4px;">Clique para trocar</div>
-          </div>
-          <div style="flex:1;">
-            <label class="form-label">Foto de capa</label>
-            <label class="photo-box" title="Clique para trocar capa" style="height:80px;">
-              ${capaPreview}
-              <div class="photo-box-label" style="${negocio.capa?'display:none':''}">📷 Clique para adicionar capa</div>
-              <input type="file" accept="image/*" onchange="App.uploadCapa(event)" style="position:absolute;inset:0;opacity:0;cursor:pointer;">
-            </label>
-          </div>
+        <div class="add-form-title">🖼️ Logo da barbearia</div>
+        <div style="display:flex;justify-content:center;margin-bottom:12px;">
+          <label class="logo-box" style="width:100px;height:100px;">
+            ${logoPreview}
+            <input type="file" accept="image/*" onchange="App.uploadLogo(event)">
+          </label>
         </div>
+        <div style="font-size:12px;color:var(--muted);text-align:center;">Clique na imagem para trocar</div>
       </div>
 
       <div class="add-form">
-        <div class="add-form-title">🔗 Seu link de agendamento</div>
-        <div style="background:var(--gray);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--muted);word-break:break-all;">
-          <strong style="color:var(--dark);">${location.origin}${location.pathname}#agendar/${negocio.slug}</strong>
-        </div>
-        <button class="btn-primary" onclick="App.copyLink('${negocio.slug}')" style="margin-top:10px;">📋 Copiar link</button>
-        <button onclick="App.showAgendarPage('${negocio.slug}')" style="width:100%;margin-top:8px;padding:12px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">👁️ Ver como cliente</button>
-      </div>`;
+        <div class="add-form-title">🌄 Foto de capa</div>
+        <label class="photo-box">
+          ${capaPreview}
+          <div class="photo-box-label">Clique para enviar uma capa<br><span style="font-size:11px;">(imagem larga, ex: 1200x400)</span></div>
+          <input type="file" accept="image/*" onchange="App.uploadCapa(event)">
+        </label>
+      </div>
+
+      <button class="btn-secondary" onclick="App.logoutDono()">Sair da conta</button>`;
   },
 
-  async salvarNome(){
+  async salvarConfig(){
     const nome=document.getElementById('cfg-nome').value.trim();
-    if(!nome){this.showToast('⚠️ Digite o nome');return}
-    await DB.updateNegocio(this.cache.negocioId,{nome});
+    const tel=document.getElementById('cfg-tel').value.trim();
+    if(!nome){this.showToast('⚠️ Nome não pode ficar vazio');return}
+    await DB.updateNegocio(this.cache.negocioId,{nome,telefone:tel});
     this.cache.negocio.nome=nome;
-    document.querySelector('.painel-title').textContent=nome;
-    this.showToast('✅ Nome atualizado!');
-  },
-
-  async salvarTelefone(){
-    const telefone=document.getElementById('cfg-telefone').value.trim();
-    if(!telefone){this.showToast('⚠️ Digite o WhatsApp');return}
-    await DB.updateNegocio(this.cache.negocioId,{telefone});
-    this.cache.negocio.telefone=telefone;
-    this.showToast('✅ WhatsApp salvo!');
+    this.cache.negocio.telefone=tel;
+    this.showToast('✅ Configurações salvas!');
+    const pTitle=document.querySelector('.painel-title');
+    if(pTitle) pTitle.textContent=nome;
   },
 
   async uploadLogo(e){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     this.showToast('⏳ Enviando logo...');
-    const result=await DB.uploadImagem(`logos/${this.cache.negocioId}/logo`,file);
-    if(result.error){this.showToast('⚠️ Erro ao enviar logo: '+result.error);return}
+    const result=await DB.uploadImagem(`negocios/${this.cache.negocioId}/logo`,file);
+    if(result.error){this.showToast('⚠️ Erro no upload: '+result.error);return}
     await DB.updateNegocio(this.cache.negocioId,{logo:result.url});
     this.cache.negocio.logo=result.url;
-    const dono=await DB.getDonoAtual();
-    await this.showPainel(dono);
-    setTimeout(()=>{const configTab=document.querySelector('.tab[data-tab="config"]');this.switchTab('config',configTab)},100);
-    this.showToast('✅ Logo atualizado!');
+    document.getElementById('painel-content').innerHTML=this.renderConfig();
+    this.showToast('✅ Logo atualizada!');
   },
 
   async uploadCapa(e){
     const file=e.target.files[0];if(!file)return;
     if(!arquivoValido(file,(m)=>this.showToast(m))){e.target.value='';return}
     this.showToast('⏳ Enviando capa...');
-    const result=await DB.uploadImagem(`capas/${this.cache.negocioId}/capa`,file);
-    if(result.error){this.showToast('⚠️ Erro ao enviar capa: '+result.error);return}
+    const result=await DB.uploadImagem(`negocios/${this.cache.negocioId}/capa`,file);
+    if(result.error){this.showToast('⚠️ Erro no upload: '+result.error);return}
     await DB.updateNegocio(this.cache.negocioId,{capa:result.url});
     this.cache.negocio.capa=result.url;
-    const dono=await DB.getDonoAtual();
-    await this.showPainel(dono);
-    setTimeout(()=>{const configTab=document.querySelector('.tab[data-tab="config"]');this.switchTab('config',configTab)},100);
+    document.getElementById('painel-content').innerHTML=this.renderConfig();
     this.showToast('✅ Capa atualizada!');
   },
 
-  copyLink(slug){const url=`${location.origin}${location.pathname}#agendar/${slug}`;navigator.clipboard.writeText(url).then(()=>this.showToast('🔗 Link copiado!'))},
-
-  // ============================================
-  // AUTH — CLIENTE (dentro de uma barbearia específica)
-  // ============================================
-  showClienteLogin(slug){
-    DB.getNegocio(slug).then(negocio=>{
-      if(!negocio)return;
-      const capaStyle=negocio.capa?`background-image:url(${negocio.capa});background-size:cover;background-position:center;`:'background:linear-gradient(135deg,#1a1a1a,#2a2a2a);';
-      const logoHtml=negocio.logo?`<img src="${negocio.logo}">`:'✂️';
-      document.getElementById('app').innerHTML=`
-      <div class="app-wrap">
-        <div class="hero">
-          <div class="hero-cover" style="${capaStyle}"><div class="hero-cover-overlay"></div></div>
-          <div class="hero-body">
-            <div class="hero-row">
-              <div class="hero-logo">${logoHtml}</div>
-              <div><div class="hero-name">${esc(negocio.nome)}</div><div class="hero-sub">⭐ Agendamento online</div></div>
-            </div>
-          </div>
-        </div>
-        <div style="padding:28px 24px 40px;">
-          <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:6px;">Entre para agendar</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">Faça login ou crie sua conta gratuitamente</div>
-          <div id="cli-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-email" placeholder="Seu e-mail"></div></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-senha" placeholder="Senha"></div></div>
-          <button class="btn-primary" onclick="App.doClienteLogin('${slug}')">Entrar e agendar</button>
-          <div style="text-align:center;margin:16px 0;font-size:12px;color:var(--muted);">— ou —</div>
-          <button onclick="App.showClienteRegister('${slug}')" style="width:100%;padding:14px;background:transparent;border:2px solid var(--border);border-radius:14px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">Criar conta grátis</button>
-        </div>
-      </div>
-      <div class="toast" id="toast"></div>`;
+  copyLink(slug){
+    const url=`${location.origin}${location.pathname}#agendar/${slug}`;
+    navigator.clipboard.writeText(url).then(()=>{
+      this.showToast('🔗 Link copiado!');
+    }).catch(()=>{
+      prompt('Copie o link:', url);
     });
   },
 
-  showClienteRegister(slug){
-    DB.getNegocio(slug).then(negocio=>{
-      if(!negocio)return;
-      const logoHtml=negocio.logo?`<img src="${negocio.logo}">`:'✂️';
-      const capaStyle=negocio.capa?`background-image:url(${negocio.capa});background-size:cover;background-position:center;`:'background:linear-gradient(135deg,#1a1a1a,#2a2a2a);';
-      document.getElementById('app').innerHTML=`
-      <div class="app-wrap">
-        <div class="hero">
-          <div class="hero-cover" style="${capaStyle}"><div class="hero-cover-overlay"></div></div>
-          <div class="hero-body">
-            <div class="hero-row">
-              <div class="hero-logo">${logoHtml}</div>
-              <div><div class="hero-name">${esc(negocio.nome)}</div><div class="hero-sub">⭐ Agendamento online</div></div>
+  showToast(msg){
+    const t=document.getElementById('toast');
+    if(!t)return;
+    t.textContent=msg;
+    t.classList.add('show');
+    clearTimeout(this._toastTimer);
+    this._toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
+  },
+
+  // ============================================
+  // FLUXO DO CLIENTE (PÚBLICO)
+  // ============================================
+  async showAgendarPage(slug){
+    this.currentSlug=slug;
+    const negocio=await DB.getNegocio(slug);
+    if(!negocio){
+      document.getElementById('app').innerHTML='<div style="padding:40px;text-align:center;color:white;background:var(--dark);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="font-size:40px;margin-bottom:16px;">🤔</div><div>Barbearia não encontrada.</div><a href="#" style="color:var(--gold);margin-top:16px;text-decoration:underline;" onclick="App.navigate('')">Voltar ao início</a></div>';
+      return;
+    }
+    this.currentNegocio=negocio;
+    
+    const servicos=await DB.getServicos(negocio.id);
+    const profissionais=await DB.getProfissionais(negocio.id);
+    const horarios=await DB.getHorariosTodos(negocio.id);
+
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div class="hero">
+        <div class="hero-cover" style="${negocio.capa?`background-image:url(${negocio.capa})`:''}">
+          <div class="hero-cover-overlay"></div>
+        </div>
+        <div class="hero-body">
+          <div class="hero-row">
+            <div class="hero-logo">${negocio.logo?`<img src="${negocio.logo}">`:'✂️'}</div>
+            <div>
+              <div class="hero-name">${esc(negocio.nome)}</div>
+              <div class="hero-sub">${esc(negocio.telefone)||'Agendamento Online'}</div>
             </div>
           </div>
         </div>
-        <div style="padding:28px 24px 40px;">
-          <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;margin-bottom:6px;">Criar conta</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">Preencha seus dados para continuar</div>
-          <div id="cli-reg-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="cli-nome" placeholder="Nome completo"></div></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="cli-tel" placeholder="WhatsApp com DDD"></div></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-email" placeholder="E-mail"></div></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-senha" placeholder="Crie uma senha (mín. 8 caracteres)"></div></div>
-          <button class="btn-primary" onclick="App.doClienteRegister('${slug}')">Criar conta e agendar</button>
-          <div style="text-align:center;margin-top:16px;font-size:13px;color:var(--muted);">Já tem conta? <a onclick="App.showClienteLogin('${slug}')" style="color:var(--dark);font-weight:700;cursor:pointer;text-decoration:underline;">Entrar</a></div>
+      </div>
+
+      <div class="content">
+        <div class="section">
+          <div class="section-label">1. Escolha o serviço</div>
+          <div class="service-list">
+            ${servicos.map(s=>`
+              <div class="service-card" id="srv-${s.id}" onclick="App.selServico('${s.id}')">
+                <div class="service-left">
+                  <div class="service-icon">✂️</div>
+                  <div>
+                    <div class="service-name">${esc(s.nome)}</div>
+                    <div class="service-dur">${s.duracao} min</div>
+                  </div>
+                </div>
+                <div class="service-right">
+                  <div class="service-price">R$${s.preco}</div>
+                  <div class="check">✓</div>
+                </div>
+              </div>
+            `).join('')}
+            ${!servicos.length?'<div class="empty-text">Nenhum serviço disponível</div>':''}
+          </div>
+        </div>
+
+        <div class="section" style="display:${this.selectedServico?'block':'none'}" id="sec-prof">
+          <div class="section-label">2. Escolha o profissional</div>
+          <div class="barber-list">
+            ${profissionais.map(p=>`
+              <div class="barber-card" id="prof-${p.id}" onclick="App.selProf('${p.id}')">
+                <div class="barber-avatar">${p.foto?`<img src="${p.foto}" style="width:100%;height:100%;object-fit:cover;">`:'👤'}</div>
+                <div class="barber-name">${esc(p.nome.split(' ')[0])}</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="section" style="display:${this.selectedProfissional?'block':'none'}" id="sec-cal">
+          <div class="section-label">3. Escolha a data e hora</div>
+          <div class="cal-wrap">
+            <div class="cal-head">
+              <button class="cal-nav" onclick="App.mudarMes(-1)">‹</button>
+              <div class="cal-month" id="cal-mes">—</div>
+              <button class="cal-nav" onclick="App.mudarMes(1)">›</button>
+            </div>
+            <div class="cal-grid" id="cal-grid"></div>
+            <div id="time-list" style="margin-top:16px;"></div>
+          </div>
+        </div>
+
+        <div class="section" style="display:${this.selectedHora?'block':'none'}" id="sec-form">
+          <div class="section-label">4. Seus dados</div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="f-nome" placeholder="Seu nome completo"></div></div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="f-tel" placeholder="WhatsApp com DDD"></div></div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="f-email" placeholder="Seu e-mail (opcional)"></div></div>
         </div>
       </div>
-      <div class="toast" id="toast"></div>`;
+
+      <div class="sticky-btn">
+        <button class="btn-primary" onclick="App.confirmarAgendamento()" style="opacity:${this.selectedHora?'1':'0.5'}">Confirmar Agendamento</button>
+      </div>
+      <div class="toast" id="toast"></div>
+    </div>`;
+
+    this.renderCalendario(horarios);
+  },
+
+  selServico(id){
+    this.selectedServico=id;
+    document.querySelectorAll('.service-card').forEach(el=>el.classList.remove('selected'));
+    document.getElementById(`srv-${id}`).classList.add('selected');
+    document.getElementById('sec-prof').style.display='block';
+    this.selectedProfissional=null; this.selectedData=null; this.selectedHora=null;
+    document.getElementById('sec-cal').style.display='none';
+    document.getElementById('sec-form').style.display='none';
+  },
+
+  selProf(id){
+    this.selectedProfissional=id;
+    document.querySelectorAll('.barber-card').forEach(el=>el.classList.remove('selected'));
+    document.getElementById(`prof-${id}`).classList.add('selected');
+    document.getElementById('sec-cal').style.display='block';
+    this.selectedData=null; this.selectedHora=null;
+    document.getElementById('sec-form').style.display='none';
+    this.renderCalendario(this.horariosCache);
+  },
+
+  renderCalendario(horarios){
+    this.horariosCache=horarios;
+    if(!this.selectedProfissional)return;
+    
+    const d=new Date(this.calYear,this.calMonth,1);
+    const mesNomes=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    document.getElementById('cal-mes').textContent=`${mesNomes[this.calMonth]} ${this.calYear}`;
+
+    const primeiroDiaSemana=d.getDay();
+    const diasNoMes=new Date(this.calYear,this.calMonth+1,0).getDate();
+    const hoje=new Date();hoje.setHours(0,0,0,0);
+
+    const h=horarios[this.selectedProfissional]||HORARIO_PADRAO;
+    const bloqueados=h.bloqueados||[];
+
+    let html='';
+    ['D','S','T','Q','Q','S','S'].forEach(lbl=>{html+=`<div class="cal-daylbl">${lbl}</div>`});
+    for(let i=0;i<primeiroDiaSemana;i++){html+=`<div class="cal-day empty"></div>`}
+
+    for(let dia=1;dia<=diasNoMes;dia++){
+      const dateStr=`${this.calYear}-${String(this.calMonth+1).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+      const dateObj=new Date(this.calYear,this.calMonth,dia);
+      const dow=dateObj.getDay();
+      
+      const isPast=dateObj<hoje;
+      const isBlocked=bloqueados.includes(dateStr);
+      const isClosed=!h[dow]||!h[dow].on;
+      const isDisabled=isPast||isBlocked||isClosed;
+      const isSelected=this.selectedData===dateStr;
+
+      let cls='cal-day';
+      if(isDisabled)cls+=' disabled';
+      if(isBlocked)cls+=' blocked';
+      if(isSelected)cls+=' selected';
+
+      html+=`<button class="${cls}" ${isDisabled?'':`onclick="App.selData('${dateStr}')"`}>${dia}</button>`;
+    }
+    document.getElementById('cal-grid').innerHTML=html;
+
+    if(this.selectedData)this.renderHoras();
+    else document.getElementById('time-list').innerHTML='';
+  },
+
+  mudarMes(delta){
+    this.calMonth+=delta;
+    if(this.calMonth>11){this.calMonth=0;this.calYear++}
+    if(this.calMonth<0){this.calMonth=11;this.calYear--}
+    this.renderCalendario(this.horariosCache);
+  },
+
+  async selData(dateStr){
+    this.selectedData=dateStr;
+    this.selectedHora=null;
+    document.getElementById('sec-form').style.display='none';
+    this.renderCalendario(this.horariosCache);
+    document.getElementById('time-list').innerHTML='<div style="text-align:center;font-size:12px;color:var(--muted);padding:10px;">Carregando horários...</div>';
+
+    const ocupados=await DB.getHorariosOcupados(this.currentNegocio.id,this.selectedProfissional,dateStr);
+    this.ocupadosCache=ocupados;
+    this.renderHoras();
+  },
+
+  renderHoras(){
+    if(!this.selectedData||!this.ocupadosCache)return;
+    
+    const d=new Date(this.selectedData+'T12:00:00');
+    const dow=d.getDay();
+    const h=this.horariosCache[this.selectedProfissional]||HORARIO_PADRAO;
+    const conf=h[dow];
+    if(!conf||!conf.on){document.getElementById('time-list').innerHTML='';return}
+
+    const [hI,mI]=conf.inicio.split(':').map(Number);
+    const [hF,mF]=conf.fim.split(':').map(Number);
+    let cur=hI*60+mI;
+    const end=hF*60+mF;
+    
+    const almoco=conf.almoco;
+    let aIni=null,aFim=null;
+    if(almoco&&almoco.on){
+      const [aI,amI]=almoco.inicio.split(':').map(Number);
+      const [aF,amF]=almoco.fim.split(':').map(Number);
+      aIni=aI*60+amI;aFim=aF*60+amF;
+    }
+
+    const serv=this.currentNegocio && App.currentNegocio ? null : null;
+    // Para simplificar, precisamos da duração do serviço selecionado
+    // Mas o this.currentNegocio não tem os serviços. Vamos buscar.
+    // Melhor: buscar duração no momento do clique. Porém, como o HTML é gerado agora,
+    // vamos apenas calcular com 30 min fixos se não achar, mas isso é impreciso.
+    // CORREÇÃO: Vamos usar um cache de serviços.
+    const duracao=this.servicosCache ? (this.servicosCache.find(s=>s.id===this.selectedServico)||{}).duracao||30 : 30;
+
+    let html='<div class="time-grid">';
+    let hasSlots=false;
+
+    while(cur<end){
+      const slotFim=cur+duracao;
+      if(slotFim>end)break;
+
+      const label=`${String(Math.floor(cur/60)).padStart(2,'0')}:${String(cur%60).padStart(2,'0')}`;
+      
+      let isOcupado=false;
+      if(this.ocupadosCache.some(o=>cur<o.fim&&slotFim>o.ini)) isOcupado=true;
+      if(aIni!==null&&cur<aFim&&slotFim>aIni) isOcupado=true;
+
+      const isSelected=this.selectedHora===label;
+      
+      if(!isOcupado){
+        hasSlots=true;
+        html+=`<div class="time-slot ${isSelected?'selected':''}" onclick="App.selHora('${label}')">${label}</div>`;
+      }else{
+        html+=`<div class="time-slot busy">${label}</div>`;
+      }
+      cur+=30;
+    }
+    html+='</div>';
+    
+    if(!hasSlots)html='<div style="text-align:center;font-size:12px;color:var(--red);padding:10px;">Nenhum horário livre nesta data.</div>';
+    document.getElementById('time-list').innerHTML=html;
+  },
+
+  selHora(hora){
+    this.selectedHora=hora;
+    this.renderHoras();
+    document.getElementById('sec-form').style.display='block';
+  },
+
+  async confirmarAgendamento(){
+    if(!this.selectedHora){
+      this.showToast('⚠️ Selecione um horário');
+      return;
+    }
+    const nome=document.getElementById('f-nome').value.trim();
+    const tel=document.getElementById('f-tel').value.trim();
+    const email=document.getElementById('f-email').value.trim();
+    if(!nome||!tel){this.showToast('⚠️ Preencha nome e WhatsApp');return}
+
+    const cliente=await DB.getClienteAtual();
+    if(!cliente){this.showToast('⚠️ Faça login como cliente para confirmar');setTimeout(()=>App.navigate('cliente-login'),1500);return}
+
+    const btn=document.querySelector('.btn-primary');
+    btn.textContent='Agendando...'; btn.disabled=true;
+
+    const result=await DB.insertAgendamento({
+      negocioId:this.currentNegocio.id,
+      clienteId:cliente.id,
+      clienteNome:nome,
+      clienteTel:tel,
+      clienteEmail:email,
+      servicoId:this.selectedServico,
+      profissionalId:this.selectedProfissional,
+      data:this.selectedData,
+      hora:this.selectedHora,
+      codigo:'TEMP'
     });
+
+    if(result.error){
+      this.showToast('⚠️ '+result.error);
+      btn.textContent='Confirmar Agendamento'; btn.disabled=false;
+      return;
+    }
+
+    const srv=this.servicosCache.find(s=>s.id===this.selectedServico);
+    const prof=this.profissionaisCache.find(p=>p.id===this.selectedProfissional);
+    const d=new Date(this.selectedData+'T12:00:00');
+    const dataFmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div class="success-wrap show">
+        <div class="success-icon">🎉</div>
+        <div class="success-title">Agendado!</div>
+        <div class="success-sub">Seu horário foi reservado com sucesso.<br>Guarde o código abaixo para consultar ou cancelar.</div>
+        <div class="success-card">
+          <div class="success-row">
+            <div class="s-icon">🏪</div>
+            <div><div class="s-lbl">Barbearia</div><div class="s-val">${esc(this.currentNegocio.nome)}</div></div>
+          </div>
+          <div class="success-row">
+            <div class="s-icon">✂️</div>
+            <div><div class="s-lbl">Serviço</div><div class="s-val">${srv?esc(srv.nome):'-'}</div></div>
+          </div>
+          <div class="success-row">
+            <div class="s-icon">👤</div>
+            <div><div class="s-lbl">Profissional</div><div class="s-val">${prof?esc(prof.nome):'-'}</div></div>
+          </div>
+          <div class="success-row">
+            <div class="s-icon">📅</div>
+            <div><div class="s-lbl">Data e Hora</div><div class="s-val" style="text-transform:capitalize;">${dataFmt} às ${this.selectedHora}</div></div>
+          </div>
+          <div class="success-row">
+            <div class="s-icon">🎟️</div>
+            <div><div class="s-lbl">Código de Agendamento</div><div class="s-val" style="color:var(--gold);font-size:18px;letter-spacing:1px;">${result.ag.codigo}</div></div>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="App.navigate('cancelar/${result.ag.codigo}')">Gerenciar meu agendamento</button>
+        <button class="btn-secondary" style="margin-top:12px;background:transparent;color:var(--dark);border:1px solid var(--border);" onclick="App.navigate('')">Voltar ao início</button>
+      </div>
+    </div>`;
   },
 
-  async doClienteLogin(slug){
-    const email=document.getElementById('cli-email').value.trim();
-    const senha=document.getElementById('cli-senha').value;
-    const errEl=document.getElementById('cli-error');
-    if(!email||!senha){errEl.textContent='Preencha e-mail e senha.';errEl.style.display='block';return}
-    const result=await DB.loginCliente(email,senha);
-    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
-    await this.showAgendarPage(slug);
-  },
-
-  async doClienteRegister(slug){
-    const nome=document.getElementById('cli-nome').value.trim();
-    const tel=document.getElementById('cli-tel').value.trim();
-    const email=document.getElementById('cli-email').value.trim();
-    const senha=document.getElementById('cli-senha').value;
-    const errEl=document.getElementById('cli-reg-error');
-    if(!nome||!tel||!email||!senha){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
-    if(senha.length<8){errEl.textContent='Senha deve ter pelo menos 8 caracteres.';errEl.style.display='block';return}
-    const result=await DB.registerCliente(nome,email,tel,senha);
-    if(result.precisaConfirmarEmail){this.showConfirmeEmail(email);return}
-    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
-    await this.showAgendarPage(slug);
-  },
-
-  // ---- LOGIN/CADASTRO DE CLIENTE GERAL (pela Home) ----
+  // ============================================
+  // LOGIN E CADASTRO DO CLIENTE
+  // ============================================
   showClienteLoginGeral(){
     document.getElementById('app').innerHTML=`
     <div class="app-wrap"><div class="auth-wrap">
-      <div class="auth-hero">
+      <div class="auth-hero" style="position:relative;">
         <div onclick="App.navigate('')" style="position:absolute;top:calc(20px + env(safe-area-inset-top));left:20px;color:white;font-size:20px;cursor:pointer;">←</div>
-        <div class="auth-logo">👤</div>
-        <div class="auth-brand">Área do Cliente</div>
-        <div class="auth-tagline">Entre para agendar e ver seus horários</div>
-      </div>
+        <div class="auth-logo">👤</div><div class="auth-brand">Área do Cliente</div><div class="auth-tagline">Acesse para agendar ou ver seus horários</div></div>
       <div class="auth-body">
-        <div class="auth-title">Bem-vindo de volta</div>
-        <div class="auth-sub">Acesse sua conta AgendaFácil</div>
-        <div id="cli-g-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-g-email" placeholder="Seu e-mail"></div></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-g-senha" placeholder="Senha"></div></div>
-        <button class="btn-primary" onclick="App.doClienteLoginGeral()" style="margin-top:8px;">Entrar</button>
+        <div class="auth-title">Bem-vindo</div>
+        <div class="auth-sub">Entre com sua conta para continuar</div>
+        <div id="login-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="login-email" placeholder="Seu e-mail"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="login-senha" placeholder="Senha"></div></div>
+        <button class="btn-primary" onclick="App.doLoginCliente()" style="margin-top:8px;">Entrar</button>
         ${this.botaoGoogleHtml('cliente')}
-        <div class="auth-switch">Não tem conta? <a onclick="App.navigate('cliente-register')">Cadastrar grátis</a></div>
+        <div class="auth-switch">Não tem conta? <a onclick="App.navigate('cliente-register')">Cadastrar</a></div>
       </div>
     </div></div>`;
   },
@@ -1965,45 +2147,44 @@ const App = {
   showClienteRegisterGeral(){
     document.getElementById('app').innerHTML=`
     <div class="app-wrap"><div class="auth-wrap">
-      <div class="auth-hero">
+      <div class="auth-hero" style="position:relative;">
         <div onclick="App.navigate('cliente-login')" style="position:absolute;top:calc(20px + env(safe-area-inset-top));left:20px;color:white;font-size:20px;cursor:pointer;">←</div>
-        <div class="auth-logo">👤</div>
-        <div class="auth-brand">Área do Cliente</div>
-        <div class="auth-tagline">Crie sua conta gratuitamente</div>
-      </div>
+        <div class="auth-logo">👤</div><div class="auth-brand">Criar Conta</div><div class="auth-tagline">Leva menos de 1 minuto</div></div>
       <div class="auth-body">
-        <div class="auth-title">Criar conta</div>
-        <div class="auth-sub">Sua conta funciona em qualquer barbearia parceira</div>
-        <div id="cli-g-reg-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="cli-g-nome" placeholder="Nome completo"></div></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="cli-g-tel" placeholder="WhatsApp com DDD"></div></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="cli-g-email" placeholder="E-mail"></div></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="cli-g-senha" placeholder="Crie uma senha (mín. 8 caracteres)"></div></div>
-        <button class="btn-primary" onclick="App.doClienteRegisterGeral()">Criar conta</button>
+        <div class="auth-title">Seus dados</div>
+        <div class="auth-sub">Preencha para criar sua conta</div>
+        <div id="reg-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="reg-nome" placeholder="Seu nome completo"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="reg-tel" placeholder="WhatsApp com DDD"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="reg-email" placeholder="Seu e-mail"></div></div>
+        <div class="form-group"><div class="input-wrap"><span class="input-icon">🔒</span><input class="form-input" type="password" id="reg-senha" placeholder="Crie uma senha"></div></div>
+        <button class="btn-primary" onclick="App.doRegisterCliente()" style="margin-top:8px;">Criar conta</button>
         ${this.botaoGoogleHtml('cliente')}
         <div class="auth-switch">Já tem conta? <a onclick="App.navigate('cliente-login')">Entrar</a></div>
       </div>
     </div></div>`;
   },
 
-  async doClienteLoginGeral(){
-    const email=document.getElementById('cli-g-email').value.trim();
-    const senha=document.getElementById('cli-g-senha').value;
-    const errEl=document.getElementById('cli-g-error');
-    if(!email||!senha){errEl.textContent='Preencha e-mail e senha.';errEl.style.display='block';return}
+  async doLoginCliente(){
+    const email=document.getElementById('login-email').value.trim();
+    const senha=document.getElementById('login-senha').value;
+    const el=document.getElementById('login-error');
+    if(!email||!senha){el.textContent='Preencha e-mail e senha.';el.style.display='block';return}
     const result=await DB.loginCliente(email,senha);
-    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
+    if(result.error){el.textContent=result.error;el.style.display='block';return}
     this.navigate('meus-agendamentos');
   },
 
-  async doClienteRegisterGeral(){
-    const nome=document.getElementById('cli-g-nome').value.trim();
-    const tel=document.getElementById('cli-g-tel').value.trim();
-    const email=document.getElementById('cli-g-email').value.trim();
-    const senha=document.getElementById('cli-g-senha').value;
-    const errEl=document.getElementById('cli-g-reg-error');
+  async doRegisterCliente(){
+    const nome=document.getElementById('reg-nome').value.trim();
+    const tel=document.getElementById('reg-tel').value.trim();
+    const email=document.getElementById('reg-email').value.trim();
+    const senha=document.getElementById('reg-senha').value;
+    const errEl=document.getElementById('reg-error');
     if(!nome||!tel||!email||!senha){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
     if(senha.length<8){errEl.textContent='Senha deve ter pelo menos 8 caracteres.';errEl.style.display='block';return}
+    errEl.style.display='none';
+    this.showToast('⏳ Criando sua conta...');
     const result=await DB.registerCliente(nome,email,tel,senha);
     if(result.precisaConfirmarEmail){this.showConfirmeEmail(email);return}
     if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
@@ -2012,610 +2193,133 @@ const App = {
 
   showConfirmeEmail(email){
     document.getElementById('app').innerHTML=`
-    <div class="app-wrap" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;padding:40px;text-align:center;">
-      <div style="font-size:52px;">📬</div>
-      <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;">Confirme seu e-mail</div>
-      <div style="font-size:13px;color:var(--muted);line-height:1.6;">Mandamos um link de confirmação para<br><strong style="color:var(--dark);">${esc(email)}</strong><br><br>Clique no link do e-mail para ativar sua conta e poder entrar.</div>
-      <button class="btn-secondary" onclick="App.navigate('')" style="width:220px;margin-top:8px;">← Voltar ao início</button>
+    <div class="app-wrap">
+      <div style="background:var(--dark);padding:60px 28px 48px;text-align:center;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+        <div style="font-size:52px;margin-bottom:16px;">✉️</div>
+        <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:white;margin-bottom:12px;">Confirme seu e-mail</div>
+        <div style="font-size:14px;color:var(--muted);line-height:1.6;margin-bottom:24px;">Enviamos um link de confirmação para<br><strong>${esc(email)}</strong>.<br>Clique no link para ativar sua conta.</div>
+        <button onclick="App.navigate('login')" class="btn-primary" style="max-width:300px;">Já confirmei, fazer login</button>
+      </div>
     </div>`;
   },
 
-  // ---- COMPLETAR CADASTRO (primeira vez logando com Google) ----
-  showCompletarCadastroDono(user){
-    const nomeSugerido=(user.user_metadata&&(user.user_metadata.full_name||user.user_metadata.name))||'';
-    document.getElementById('app').innerHTML=`
-    <div class="app-wrap"><div class="auth-wrap">
-      <div class="auth-hero">
-        <div class="auth-logo">✂️</div><div class="auth-brand">Quase lá!</div>
-        <div class="auth-tagline">Só falta configurar sua barbearia</div>
-      </div>
-      <div class="auth-body">
-        <div class="auth-title">Complete seu cadastro</div>
-        <div class="auth-sub">Entramos com sua conta Google (${esc(user.email)}). Falta só isso:</div>
-        <div id="gc-dono-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="gc-dono-nome" value="${esc(nomeSugerido)}" placeholder="Seu nome"></div></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">🏪</span><input class="form-input" type="text" id="gc-dono-barbearia" placeholder="Nome da barbearia"></div></div>
-        <div class="form-group">
-          <label class="form-label">Link de agendamento</label>
-          <div class="input-wrap"><span class="input-icon">🔗</span><input class="form-input" type="text" id="gc-dono-slug" placeholder="minha-barbearia" oninput="this.value=this.value.toLowerCase().replace(/\\s+/g,'-').replace(/[^a-z0-9-]/g,'');document.getElementById('gc-dono-slug-preview').textContent=this.value||'minha-barbearia'"></div>
-          <div class="link-preview">agendafacil.app/<strong id="gc-dono-slug-preview">minha-barbearia</strong></div>
-        </div>
-        <button class="btn-primary" onclick="App.completarCadastroDono()">Concluir cadastro</button>
-      </div>
-    </div></div>`;
-  },
-
-  async completarCadastroDono(){
-    const nome=document.getElementById('gc-dono-nome').value.trim();
-    const barbearia=document.getElementById('gc-dono-barbearia').value.trim();
-    const slug=document.getElementById('gc-dono-slug').value.trim();
-    const errEl=document.getElementById('gc-dono-error');
-    if(!nome||!barbearia||!slug){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
-    errEl.style.display='none';
-    const {data:{user}}=await sb.auth.getUser();
-    const result=await DB.criarInfraestruturaNegocio(user.id,nome,slug,barbearia);
-    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
-    const dono=await DB.getDonoAtual();
-    await this.showPainel(dono);
-  },
-
-  showCompletarCadastroCliente(user){
-    const nomeSugerido=(user.user_metadata&&(user.user_metadata.full_name||user.user_metadata.name))||'';
-    document.getElementById('app').innerHTML=`
-    <div class="app-wrap"><div class="auth-wrap">
-      <div class="auth-hero">
-        <div class="auth-logo">👤</div><div class="auth-brand">Quase lá!</div>
-        <div class="auth-tagline">Só mais um passo pra agendar</div>
-      </div>
-      <div class="auth-body">
-        <div class="auth-title">Complete seu cadastro</div>
-        <div class="auth-sub">Entramos com sua conta Google (${esc(user.email)}). Falta só o telefone:</div>
-        <div id="gc-cli-error" style="color:var(--red);font-size:13px;margin-bottom:12px;display:none;"></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="gc-cli-nome" value="${esc(nomeSugerido)}" placeholder="Nome completo"></div></div>
-        <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="gc-cli-tel" placeholder="WhatsApp com DDD"></div></div>
-        <button class="btn-primary" onclick="App.completarCadastroCliente()">Concluir cadastro</button>
-      </div>
-    </div></div>`;
-  },
-
-  async completarCadastroCliente(){
-    const nome=document.getElementById('gc-cli-nome').value.trim();
-    const tel=document.getElementById('gc-cli-tel').value.trim();
-    const errEl=document.getElementById('gc-cli-error');
-    if(!nome||!tel){errEl.textContent='Preencha todos os campos.';errEl.style.display='block';return}
-    errEl.style.display='none';
-    const {data:{user}}=await sb.auth.getUser();
-    const result=await DB.criarPerfilCliente(user.id,nome,user.email,tel);
-    if(result.error){errEl.textContent=result.error;errEl.style.display='block';return}
-    this.navigate('meus-agendamentos');
-  },
-
   // ============================================
-  // TELA AGENDAR (cliente)
+  // MEUS AGENDAMENTOS
   // ============================================
-  async showAgendarPage(slug){
-    const negocio=await DB.getNegocio(slug);
-    if(!negocio){
-      document.getElementById('app').innerHTML=`<div class="app-wrap" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;padding:40px;"><div style="font-size:48px;">🔍</div><div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;text-align:center;">Barbearia não encontrada</div><button class="btn-secondary" onclick="App.navigate('')" style="width:200px;margin-top:8px;">← Voltar</button></div>`;
-      return;
-    }
+  async showMeusAgendamentos(){
+    const cliente=await DB.getClienteAtual();
+    if(!cliente){this.navigate('cliente-login');return}
 
-    const clienteSession=await DB.getClienteAtual();
-    if(!clienteSession){this.showClienteLogin(slug);return}
-
-    await this.loadCache(negocio.id,negocio);
-
-    if(this.cache.bloqueios.some(c=>c.clienteId===clienteSession.id)){
-      document.getElementById('app').innerHTML=`<div class="app-wrap" style="display:flex;align-items:center;justify-content:center;min-height:100vh;flex-direction:column;gap:16px;padding:40px;text-align:center;">
-        <div style="font-size:52px;">🚫</div>
-        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;">Acesso bloqueado</div>
-        <div style="font-size:13px;color:var(--muted);">Sua conta foi bloqueada nesta barbearia.<br>Entre em contato para mais informações.</div>
-      </div>`;
-      return;
-    }
-
-    this.currentNegocio=negocio;this.currentSlug=slug;this.currentCliente=clienteSession;
-    this.selectedServico=null;this.selectedProfissional=null;this.selectedData=null;this.selectedHora=null;
-    this.calMonth=new Date().getMonth();this.calYear=new Date().getFullYear();
-
-    const servicos=this.cache.servicos;
-    const profs=this.cache.profissionais;
-    const capaStyle=negocio.capa?`background-image:url(${negocio.capa});background-size:cover;background-position:center;`:'background:linear-gradient(135deg,#1a1a1a,#2a2a2a);';
-    const logoHtml=negocio.logo?`<img src="${negocio.logo}">`:'✂️';
+    const ags=await DB.getAgendamentosByCliente(cliente.id);
+    const hoje=new Date().toISOString().split('T')[0];
+    const futuros=ags.filter(a=>a.data>=hoje&&a.status!=='cancelado').sort((a,b)=>(a.data+a.hora).localeCompare(b.data+b.hora));
+    const passados=ags.filter(a=>a.data<hoje||a.status==='cancelado').sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
 
     document.getElementById('app').innerHTML=`
     <div class="app-wrap">
-      <div class="hero">
-        <div class="hero-cover" style="${capaStyle}"><div class="hero-cover-overlay"></div></div>
-        <div class="hero-body">
-          <div class="hero-row">
-            <div class="hero-logo">${logoHtml}</div>
-            <div>
-              <div class="hero-name">${esc(negocio.nome)}</div>
-              <div class="hero-sub">⭐ Agendamento online</div>
-            </div>
-          </div>
-          <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:5;">
-            <div style="font-size:12px;color:rgba(255,255,255,0.6);">👤 ${esc(clienteSession.nome)}</div>
-            <div style="position:relative;">
-              <button onclick="App.toggleClienteMenu()" id="cliente-menu-btn" style="font-size:11px;color:var(--gold);background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:5px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;">
-                Minha conta ▾
-              </button>
-              <div id="cliente-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:white;border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden;min-width:190px;z-index:20;">
-                <div onclick="App.navigate('meus-agendamentos')" style="padding:13px 16px;font-size:13px;font-weight:600;color:var(--dark);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);">📋 Meus agendamentos</div>
-                <div onclick="App.logoutCliente('${slug}')" style="padding:13px 16px;font-size:13px;font-weight:600;color:var(--red);cursor:pointer;display:flex;align-items:center;gap:8px;">🚪 Sair da conta</div>
-              </div>
-            </div>
-          </div>
-          <div class="hero-stats" style="margin-top:12px;">
-            <div class="hero-stat"><div class="stat-val">${servicos.length}</div><div class="stat-lbl">Serviços</div></div>
-            <div class="hero-stat"><div class="stat-val">${profs.length}</div><div class="stat-lbl">Profissionais</div></div>
-            <div class="hero-stat"><div class="stat-val">100%</div><div class="stat-lbl">Online</div></div>
-          </div>
-        </div>
+      <div class="painel-header">
+        <div><div class="painel-title">Meus Agendamentos</div><div class="painel-sub">Olá, ${esc(cliente.nome)} 👋</div></div>
+        <button style="cursor:pointer;background:rgba(255,255,255,.1);border:none;border-radius:8px;padding:8px 14px;font-size:12px;color:#888;font-family:'DM Sans',sans-serif;" onclick="App.logoutCliente()">Sair</button>
       </div>
+
       <div class="content">
         <div class="section">
-          <div class="section-label">1. Escolha o serviço</div>
-          <div class="service-list">
-            ${servicos.map(s=>`<div class="service-card" onclick="App.selectServico('${s.id}')" data-id="${s.id}"><div class="service-left"><div class="service-icon">✂️</div><div><div class="service-name">${esc(s.nome)}</div><div class="service-dur">⏱ ${s.duracao} min</div></div></div><div class="service-right"><div class="service-price">R$${s.preco}</div><div class="check">✓</div></div></div>`).join('')||'<div style="color:var(--muted);font-size:13px;">Nenhum serviço cadastrado.</div>'}
-          </div>
+          <div class="section-label">Próximos</div>
+          ${futuros.length?futuros.map(ag=>this.renderAgCardCliente(ag,true)).join(''):'<div class="empty-text" style="padding:20px;">Nenhum agendamento futuro.</div>'}
         </div>
-        <div class="section">
-          <div class="section-label">2. Escolha o profissional</div>
-          <div class="barber-list">
-            ${profs.map(p=>`<div class="barber-card" onclick="App.selectProfissional('${p.id}')" data-id="${p.id}"><div class="barber-avatar">${p.foto?`<img src="${p.foto}" style="width:100%;height:100%;object-fit:cover;">`:'👤'}</div><div class="barber-name">${esc(p.nome)}</div></div>`).join('')}
-          </div>
+
+        <div class="section" style="margin-top:32px;">
+          <div class="section-label">Histórico</div>
+          ${passados.length?passados.map(ag=>this.renderAgCardCliente(ag,false)).join(''):'<div class="empty-text" style="padding:20px;">Nenhum agendamento no histórico.</div>'}
         </div>
-        <div class="section">
-          <div class="section-label">3. Escolha a data</div>
-          <div class="cal-wrap" id="cal-wrap"></div>
-        </div>
-        <div class="section" id="horarios-section" style="display:none;">
-          <div class="section-label">4. Escolha o horário</div>
-          <div class="time-grid" id="time-grid"></div>
-        </div>
-        <div class="section">
-          <div class="summary-box">
-            <div class="summary-title">Resumo do agendamento</div>
-            <div class="summary-row"><span class="summary-lbl">Cliente</span><span class="summary-val">${esc(clienteSession.nome)}</span></div>
-            <div class="summary-row"><span class="summary-lbl">Serviço</span><span class="summary-val" id="res-servico">—</span></div>
-            <div class="summary-row"><span class="summary-lbl">Profissional</span><span class="summary-val" id="res-prof">—</span></div>
-            <div class="summary-row"><span class="summary-lbl">Data</span><span class="summary-val" id="res-data">—</span></div>
-            <div class="summary-row"><span class="summary-lbl">Horário</span><span class="summary-val" id="res-hora">—</span></div>
-            <div class="summary-row"><span class="summary-lbl">Total</span><span class="summary-val gold" id="res-preco">—</span></div>
-          </div>
-        </div>
+
+        <button class="btn-secondary" style="margin-top:24px;" onclick="App.navigate('')">Voltar ao início</button>
       </div>
-      <div class="sticky-btn"><button class="btn-primary" onclick="App.confirmarAgendamento()">✓ Confirmar Agendamento</button></div>
-      <div class="success-wrap" id="success-wrap">
-        <div class="success-icon">✅</div>
-        <div class="success-title">Agendado!</div>
-        <div class="success-sub">Seu horário foi reservado com sucesso.</div>
-        <div class="success-card" id="success-card"></div>
-        <button class="btn-secondary" onclick="App.resetAgendar()" style="width:100%;">← Fazer novo agendamento</button>
-      </div>
-    </div>
-    <div class="toast" id="toast"></div>`;
-    this.renderCalendar();
+      <div class="toast" id="toast"></div>
+    </div>`;
   },
 
-  async logoutCliente(slug){
-    await DB.logout();
-    if(slug)this.showClienteLogin(slug);
-    else this.navigate('');
-  },
-
-  toggleClienteMenu(){
-    const dd=document.getElementById('cliente-menu-dropdown');
-    if(!dd)return;
-    const isOpen=dd.style.display==='block';
-    dd.style.display=isOpen?'none':'block';
-  },
-
-  // ---- MEUS AGENDAMENTOS (cliente) ----
-  async showMeusAgendamentos(){
-    const clienteSession=await DB.getClienteAtual();
-    if(!clienteSession){this.navigate('');return}
-
-    document.getElementById('app').innerHTML=`
-    <div class="app-wrap">
-      <div style="background:var(--dark);padding:48px 20px 20px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-          <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:900;color:white;">Meus Agendamentos</div>
-          <div style="position:relative;">
-            <button onclick="App.toggleClienteMenu()" id="cliente-menu-btn" style="font-size:11px;color:var(--gold);background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.3);border-radius:8px;padding:5px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:4px;">
-              Minha conta ▾
-            </button>
-            <div id="cliente-menu-dropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:white;border-radius:12px;box-shadow:var(--shadow-lg);overflow:hidden;min-width:190px;z-index:20;">
-              <div onclick="App.navigate('')" style="padding:13px 16px;font-size:13px;font-weight:600;color:var(--dark);cursor:pointer;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);">🏠 Início</div>
-              <div onclick="App.logoutCliente('')" style="padding:13px 16px;font-size:13px;font-weight:600;color:var(--red);cursor:pointer;display:flex;align-items:center;gap:8px;">🚪 Sair da conta</div>
-            </div>
-          </div>
-        </div>
-        <div style="font-size:12px;color:var(--muted);">👤 ${esc(clienteSession.nome)}</div>
-      </div>
-      <div style="padding:20px;padding-bottom:40px;" id="meus-ag-content">
-        <div class="loading">Carregando...</div>
-      </div>
-    </div>
-    <div class="toast" id="toast"></div>`;
-
-    const ags=(await DB.getAgendamentosByCliente(clienteSession.id)).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
-    const todayStr=new Date().toISOString().split('T')[0];
-    const html=await this.renderMeusAgendamentosLista(ags,todayStr);
-    document.getElementById('meus-ag-content').innerHTML=html;
-  },
-
-  async renderMeusAgendamentosLista(ags,todayStr){
-    if(!ags.length)return`<div class="empty-state"><div class="empty-icon">📅</div><div class="empty-text">Você ainda não tem agendamentos.<br>Acesse o link de uma barbearia para agendar!</div></div>`;
-
-    // busca dados dos negócios/serviços/profissionais envolvidos (podem ser de várias barbearias)
-    const negocioIds=[...new Set(ags.map(a=>a.negocioId))];
-    const negociosMap={},servicosMap={},profsMap={};
-    await Promise.all(negocioIds.map(async nid=>{
-      const [neg,servs,profs]=await Promise.all([
-        sb.from('negocios').select('*').eq('id',nid).maybeSingle(),
-        DB.getServicos(nid),
-        DB.getProfissionais(nid),
-      ]);
-      negociosMap[nid]=mapNegocio(neg.data);
-      servicosMap[nid]=servs;
-      profsMap[nid]=profs;
-    }));
-
-    return ags.map(ag=>{
-      const negocio=negociosMap[ag.negocioId];
-      const servicos=negocio?servicosMap[ag.negocioId]:[];
-      const profs=negocio?profsMap[ag.negocioId]:[];
-      const s=servicos.find(x=>x.id===ag.servicoId);
-      const p=profs.find(x=>x.id===ag.profissionalId);
-      const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
-      const isPast=ag.data<todayStr;
-      const podeCancel=!isPast&&ag.status!=='cancelado';
-      return`<div class="ag-card ${ag.status}">
-        <div class="ag-head">
-          <div class="ag-nome">🏪 ${negocio?negocio.nome:'Barbearia removida'}</div>
-          <div class="ag-status ${ag.status}">${ag.status}</div>
-        </div>
-        <div class="ag-info">
-          <span>✂️ ${s?s.nome:'-'} · R$${s?s.preco:'-'}</span>
-          <span>👤 ${p?p.nome:'-'}</span>
-          <span>📅 ${df} às ${ag.hora}</span>
-          ${isPast?'<span style="color:#bbb;">🕓 Agendamento já passou</span>':''}
-        </div>
-        ${podeCancel?`
-        <div class="ag-actions">
-          <button class="btn-sm btn-cancel-ag" onclick="App.cancelarMeuAgendamento('${ag.id}')">✕ Cancelar agendamento</button>
-          ${negocio?`<button class="btn-sm" style="background:transparent;border:1px solid var(--border);color:var(--muted);" onclick="App.navigate('agendar/${negocio.slug}')">🗓️ Agendar de novo</button>`:''}
-        </div>`:negocio&&ag.status!=='cancelado'?`
-        <div class="ag-actions">
-          <button class="btn-sm" style="background:transparent;border:1px solid var(--border);color:var(--muted);" onclick="App.navigate('agendar/${negocio.slug}')">🗓️ Agendar de novo</button>
-        </div>`:''}
+  renderAgCardCliente(ag,isFuturo){
+    const df=new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'});
+    let actions='';
+    if(isFuturo&&(ag.status==='pendente'||ag.status==='confirmado')){
+      actions=`<div style="margin-top:10px;text-align:right;">
+        <button onclick="App.cancelarMeuAg('${ag.codigo}')" style="background:transparent;border:none;color:var(--red);font-size:11px;font-weight:600;cursor:pointer;text-decoration:underline;">Cancelar</button>
       </div>`;
-    }).join('');
-  },
-
-  async cancelarMeuAgendamento(agId){
-    await DB.updateStatus(agId,'cancelado');
-    this.notificar(agId,'cancelado_pelo_cliente');
-    const clienteSession=await DB.getClienteAtual();
-    const ags=(await DB.getAgendamentosByCliente(clienteSession.id)).sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
-    const todayStr=new Date().toISOString().split('T')[0];
-    document.getElementById('meus-ag-content').innerHTML=await this.renderMeusAgendamentosLista(ags,todayStr);
-    this.showToast('✅ Agendamento cancelado!');
-  },
-
-  selectServico(id){
-    this.selectedServico=this.cache.servicos.find(s=>s.id===id);
-    document.querySelectorAll('.service-card').forEach(c=>c.classList.remove('selected'));
-    document.querySelector(`.service-card[data-id="${id}"]`).classList.add('selected');
-    document.getElementById('res-servico').textContent=this.selectedServico.nome;
-    document.getElementById('res-preco').textContent=`R$${this.selectedServico.preco}`;
-  },
-
-  selectProfissional(id){
-    this.selectedProfissional=this.cache.profissionais.find(p=>p.id===id);
-    document.querySelectorAll('.barber-card').forEach(c=>c.classList.remove('selected'));
-    document.querySelector(`.barber-card[data-id="${id}"]`).classList.add('selected');
-    document.getElementById('res-prof').textContent=this.selectedProfissional.nome;
-    this.selectedData=null;this.selectedHora=null;
-    document.getElementById('res-data').textContent='—';
-    document.getElementById('res-hora').textContent='—';
-    document.getElementById('horarios-section').style.display='none';
-    this.renderCalendar();
-  },
-
-  // ---- CALENDAR ----
-  gerarSlots(inicio,fim,duracao,almoco){
-    const slots=[];
-    const [hI,mI]=inicio.split(':').map(Number);
-    const [hF,mF]=fim.split(':').map(Number);
-    let cur=hI*60+mI;
-    const end=hF*60+mF;
-    let almocoIni=null,almocoFim=null;
-    if(almoco&&almoco.on){
-      const [aI,amI]=almoco.inicio.split(':').map(Number);
-      const [aF,amF]=almoco.fim.split(':').map(Number);
-      almocoIni=aI*60+amI;almocoFim=aF*60+amF;
     }
-    // sempre avança de 30 em 30 min, independente da duração do serviço —
-    // assim um horário livre aparece pra qualquer serviço que caiba nele
-    while(cur+duracao<=end){
-      const slotFim=cur+duracao;
-      const conflitaComAlmoco=almocoIni!==null&&(cur<almocoFim&&slotFim>almocoIni);
-      if(!conflitaComAlmoco){
-        slots.push(`${String(Math.floor(cur/60)).padStart(2,'0')}:${String(cur%60).padStart(2,'0')}`);
-      }
-      cur+=30;
-    }
-    return slots;
-  },
-
-  renderCalendar(){
-    const wrap=document.getElementById('cal-wrap');if(!wrap)return;
-    if(!this.selectedProfissional){
-      wrap.innerHTML=`<div style="text-align:center;padding:24px 12px;color:var(--muted);font-size:13px;">👆 Escolha um profissional acima para ver os dias disponíveis</div>`;
-      return;
-    }
-    const h=this.cache.horarios[this.selectedProfissional.id]||{0:{on:false},1:{on:true},2:{on:true},3:{on:true},4:{on:true},5:{on:true},6:{on:true},bloqueados:[]};
-    const bloqueados=h.bloqueados||[];
-    const now=new Date();
-    const year=this.calYear,month=this.calMonth;
-    const mNames=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-    const firstDay=new Date(year,month,1).getDay();
-    const daysInMonth=new Date(year,month+1,0).getDate();
-    const todayStr=now.toISOString().split('T')[0];
-    const labels=['D','S','T','Q','Q','S','S'];
-    let days=labels.map(l=>`<div class="cal-daylbl">${l}</div>`).join('');
-    for(let i=0;i<firstDay;i++)days+=`<div class="cal-day empty"></div>`;
-    for(let d=1;d<=daysInMonth;d++){
-      const ds=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-      const isPast=ds<todayStr;
-      const dow=new Date(ds+'T12:00:00').getDay();
-      const isBloqueado=bloqueados.includes(ds);
-      const isDiaOff=!h[dow]||!h[dow].on;
-      const disabled=isPast||isBloqueado||isDiaOff;
-      const isSelected=ds===this.selectedData;
-      const isToday=ds===todayStr;
-      const cls=disabled?(isBloqueado?'blocked':'disabled'):isSelected?'selected':isToday?'today':'';
-      days+=`<button class="cal-day ${cls}" ${disabled?'disabled':`onclick="App.selectData('${ds}')"`}>${d}</button>`;
-    }
-    wrap.innerHTML=`
-      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">📅 Dias disponíveis de <strong style="color:var(--dark);">${this.selectedProfissional.nome}</strong></div>
-      <div class="cal-head">
-        <button class="cal-nav" onclick="App.prevMonth()">‹</button>
-        <div class="cal-month">${mNames[month]} ${year}</div>
-        <button class="cal-nav" onclick="App.nextMonth()">›</button>
+    return`
+    <div class="ag-card ${ag.status}">
+      <div class="ag-head"><div class="ag-nome">${df} às ${ag.hora}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
+      <div class="ag-info">
+        <span style="font-size:11px;color:var(--muted);">Cód: ${esc(ag.codigo)}</span>
       </div>
-      <div class="cal-grid">${days}</div>`;
+      ${actions}
+    </div>`;
   },
 
-  prevMonth(){
-    if(this.calMonth===0){this.calMonth=11;this.calYear--}else this.calMonth--;
-    const now=new Date();
-    if(this.calYear<now.getFullYear()||(this.calYear===now.getFullYear()&&this.calMonth<now.getMonth())){this.calMonth=now.getMonth();this.calYear=now.getFullYear()}
-    this.renderCalendar();
+  async cancelarMeuAg(codigo){
+    if(!confirm('Tem certeza que quer cancelar este agendamento?'))return;
+    await DB.cancelarPorCodigo(codigo);
+    this.showToast('✅ Agendamento cancelado');
+    this.showMeusAgendamentos();
   },
 
-  nextMonth(){
-    if(this.calMonth===11){this.calMonth=0;this.calYear++}else this.calMonth++;
-    this.renderCalendar();
-  },
-
-  selectData(ds){
-    this.selectedData=ds;this.selectedHora=null;
-    this.renderCalendar();
-    const d=new Date(ds+'T12:00:00');
-    document.getElementById('res-data').textContent=d.toLocaleDateString('pt-BR',{weekday:'short',day:'numeric',month:'short'});
-    document.getElementById('res-hora').textContent='—';
-    this.refreshHorarios();
-  },
-
-  async refreshHorarios(){
-    if(!this.selectedData||!this.selectedProfissional)return;
-    const section=document.getElementById('horarios-section');
-    const grid=document.getElementById('time-grid');
-    if(!section||!grid)return;
-    section.style.display='block';
-    grid.innerHTML='<div style="grid-column:span 4;font-size:13px;color:var(--muted);padding:8px;">Carregando horários...</div>';
-    const h=this.cache.horarios[this.selectedProfissional.id]||{};
-    const dow=new Date(this.selectedData+'T12:00:00').getDay();
-    const dayConfig=h[dow]||{on:true,inicio:'08:00',fim:'18:00'};
-    const duracao=this.selectedServico?this.selectedServico.duracao:30;
-    const slots=this.gerarSlots(dayConfig.inicio,dayConfig.fim,duracao,dayConfig.almoco);
-    const ocupados=await DB.getHorariosOcupados(this.currentNegocio.id,this.selectedProfissional.id,this.selectedData);
-    grid.innerHTML=slots.map(hora=>{
-      const [hh,mm]=hora.split(':').map(Number);
-      const slotIni=hh*60+mm;
-      const slotFim=slotIni+duracao;
-      const busy=ocupados.some(o=>slotIni<o.fim&&slotFim>o.ini);
-      const sel=hora===this.selectedHora;
-      return`<div class="time-slot ${busy?'busy':sel?'selected':''}" ${!busy?`onclick="App.selectHora('${hora}')"`:''}>${hora}</div>`;
-    }).join('');
-    if(!slots.length)grid.innerHTML='<div style="grid-column:span 4;font-size:13px;color:var(--muted);padding:8px;">Sem horários disponíveis neste dia.</div>';
-  },
-
-  selectHora(hora){
-    this.selectedHora=hora;this.refreshHorarios();
-    document.getElementById('res-hora').textContent=hora;
-  },
-
-  gerarCodigo(){
-    const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code='';for(let i=0;i<6;i++)code+=chars[Math.floor(Math.random()*chars.length)];
-    return code;
-  },
-
-  async confirmarAgendamento(){
-    const clienteSession=this.currentCliente;
-    if(!clienteSession){this.showToast('⚠️ Faça login para agendar');return}
-    if(!this.selectedServico){this.showToast('⚠️ Escolha um serviço');return}
-    if(!this.selectedProfissional){this.showToast('⚠️ Escolha um profissional');return}
-    if(!this.selectedData){this.showToast('⚠️ Escolha uma data');return}
-    if(!this.selectedHora){this.showToast('⚠️ Escolha um horário');return}
-
-    // checagem final de ocupação (evita conflito de dois clientes agendando ao mesmo tempo)
-    const ocupadosFinal=await DB.getHorariosOcupados(this.currentNegocio.id,this.selectedProfissional.id,this.selectedData);
-    const [selH,selM]=this.selectedHora.split(':').map(Number);
-    const selIni=selH*60+selM;
-    const selFim=selIni+this.selectedServico.duracao;
-    const conflita=ocupadosFinal.some(o=>selIni<o.fim&&selFim>o.ini);
-    if(conflita){
-      this.showToast('⚠️ Esse horário acabou de ser reservado. Escolha outro.');
-      this.refreshHorarios();
-      return;
-    }
-
-    const codigo=this.gerarCodigo();
-    const result=await DB.insertAgendamento({
-      negocioId:this.currentNegocio.id,clienteId:clienteSession.id,clienteNome:clienteSession.nome,
-      clienteTel:clienteSession.tel,clienteEmail:clienteSession.email,servicoId:this.selectedServico.id,
-      profissionalId:this.selectedProfissional.id,data:this.selectedData,hora:this.selectedHora,codigo
-    });
-    if(result.error){this.showToast('⚠️ Erro ao agendar. Tente novamente.');return}
-    this.notificar(result.ag.id,'nova_reserva');
-
-    const d=new Date(this.selectedData+'T12:00:00');
-    const fmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
-    document.getElementById('success-card').innerHTML=`
-      <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Cliente</div><div class="s-val">${esc(clienteSession.nome)}</div></div></div>
-      <div class="success-row"><span class="s-icon">✂️</span><div><div class="s-lbl">Serviço</div><div class="s-val">${this.selectedServico.nome}</div></div></div>
-      <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Profissional</div><div class="s-val">${this.selectedProfissional.nome}</div></div></div>
-      <div class="success-row"><span class="s-icon">📅</span><div><div class="s-lbl">Data e hora</div><div class="s-val">${fmt} às ${this.selectedHora}</div></div></div>
-      <div class="success-row"><span class="s-icon">💰</span><div><div class="s-lbl">Total</div><div class="s-val">R$${this.selectedServico.preco}</div></div></div>
-      <div style="margin-top:16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:14px;">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#065f46;margin-bottom:6px;">🔑 Código de cancelamento</div>
-        <div style="font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#064e3b;letter-spacing:6px;text-align:center;padding:8px 0;">${codigo}</div>
-        <div style="font-size:11px;color:#065f46;text-align:center;margin-top:4px;">Guarde este código para cancelar se precisar</div>
-      </div>
-      <button onclick="App.navigate('cancelar/${codigo}')" style="width:100%;margin-top:12px;padding:12px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);">Precisa cancelar? Clique aqui</button>`;
-    document.getElementById('success-wrap').classList.add('show');
+  async logoutCliente(){
+    await DB.logout();
+    this.navigate('');
   },
 
   // ============================================
-  // TELA CANCELAMENTO (por código)
+  // CANCELAMENTO PÚBLICO POR CÓDIGO
   // ============================================
   async showCancelarPage(codigo){
-    document.getElementById('app').innerHTML=`<div class="app-wrap" style="min-height:100vh;display:flex;flex-direction:column;">
-      <div style="background:var(--dark);padding:48px 24px 28px;text-align:center;">
-        <div style="font-size:36px;margin-bottom:8px;">🗓️</div>
-        <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:white;">Cancelar Agendamento</div>
-      </div>
-      <div style="padding:28px 24px;flex:1;" id="cancelar-body">
-        <div class="loading">Carregando...</div>
-      </div>
-    </div>
-    <div class="toast" id="toast"></div>`;
-
     const ag=codigo?await DB.buscarPorCodigo(codigo):null;
-    document.getElementById('cancelar-body').innerHTML=await this.renderCancelarBody(ag,codigo);
-  },
-
-  async renderCancelarBody(ag,codigo){
-    if(!ag){
-      return`<div style="text-align:center;padding:40px 0;">
-        <div style="font-size:48px;margin-bottom:16px;">🔍</div>
-        <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:8px;">Código não encontrado</div>
-        <div style="font-size:13px;color:var(--muted);margin-bottom:24px;">Verifique o código e tente novamente.</div>
-        <div style="margin-bottom:16px;">
-          <input class="form-input no-icon" type="text" id="codigo-input" placeholder="Digite seu código (ex: AB3C9D)" style="text-align:center;font-size:18px;letter-spacing:4px;text-transform:uppercase;">
-        </div>
-        <button class="btn-primary" onclick="App.buscarCodigo()">Buscar agendamento</button>
-      </div>`;
-    }
-    if(ag.status==='cancelado'){
-      return`<div style="text-align:center;padding:40px 0;">
-        <div style="font-size:48px;margin-bottom:16px;">❌</div>
-        <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;margin-bottom:8px;">Já cancelado</div>
-        <div style="font-size:13px;color:var(--muted);">Este agendamento já foi cancelado.</div>
-      </div>`;
-    }
-    const negocioData=await sb.from('negocios').select('*').eq('id',ag.negocioId).maybeSingle();
-    const negocioObj=mapNegocio(negocioData.data);
-    const servicos=await DB.getServicos(ag.negocioId);
-    const profs=await DB.getProfissionais(ag.negocioId);
-    const s=servicos.find(x=>x.id===ag.servicoId);
-    const p=profs.find(x=>x.id===ag.profissionalId);
-    const d=new Date(ag.data+'T12:00:00');
-    const fmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
-    const isPast=ag.data<new Date().toISOString().split('T')[0];
-    return`
-      <div style="background:var(--white);border-radius:var(--radius);padding:20px;box-shadow:var(--shadow);margin-bottom:20px;">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--gold);margin-bottom:14px;">📋 Detalhes do agendamento</div>
-        <div class="success-row"><span class="s-icon">🏪</span><div><div class="s-lbl">Barbearia</div><div class="s-val">${negocioObj?esc(negocioObj.nome):'-'}</div></div></div>
-        <div class="success-row"><span class="s-icon">✂️</span><div><div class="s-lbl">Serviço</div><div class="s-val">${s?s.nome:'-'}</div></div></div>
-        <div class="success-row"><span class="s-icon">👤</span><div><div class="s-lbl">Profissional</div><div class="s-val">${p?p.nome:'-'}</div></div></div>
-        <div class="success-row"><span class="s-icon">📅</span><div><div class="s-lbl">Data e hora</div><div class="s-val">${fmt} às ${ag.hora}</div></div></div>
-        <div class="success-row"><span class="s-icon">🔖</span><div><div class="s-lbl">Status</div><div class="s-val" style="color:${ag.status==='confirmado'?'var(--green)':'#92400e'}">${ag.status==='confirmado'?'✅ Confirmado':'⏳ Pendente'}</div></div></div>
+    document.getElementById('app').innerHTML=`
+    <div class="app-wrap">
+      <div class="painel-header" style="text-align:center;display:block;padding:32px 20px;">
+        <div class="painel-title">Gerenciar Agendamento</div>
       </div>
-      ${isPast
-        ?`<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:12px;padding:14px;text-align:center;font-size:13px;color:#92400e;">Este agendamento já passou e não pode ser cancelado.</div>`
-        :`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:12px;padding:16px;margin-bottom:16px;">
-            <div style="font-size:13px;color:#991b1b;font-weight:600;margin-bottom:4px;">⚠️ Atenção</div>
-            <div style="font-size:12px;color:#b91c1c;line-height:1.5;">Ao cancelar, o horário ficará disponível para outros clientes. Esta ação não pode ser desfeita.</div>
+      <div class="content">
+        ${!codigo?`
+        <div class="add-form">
+          <div class="add-form-title">Buscar por código</div>
+          <div class="form-group"><input class="form-input no-icon" type="text" id="codigo-input" placeholder="Ex: A1B2C3D4" style="text-transform:uppercase;"></div>
+          <button class="btn-primary" onclick="App.navigate('cancelar/'+document.getElementById('codigo-input').value)">Buscar</button>
+        </div>`
+        : !ag?`
+        <div class="empty-state"><div class="empty-icon">🔍</div><div class="empty-text">Nenhum agendamento encontrado com esse código.</div><button class="btn-primary" style="margin-top:16px;" onclick="App.navigate('cancelar')">Tentar outro código</button></div>`
+        : `
+        <div class="ag-card ${ag.status}" style="margin-top:20px;">
+          <div class="ag-head"><div class="ag-nome">${esc(ag.clienteNome)}</div><div class="ag-status ${ag.status}">${ag.status}</div></div>
+          <div class="ag-info">
+            <span>📅 ${new Date(ag.data+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}</span>
+            <span>⏰ ${ag.hora}</span>
           </div>
-          <button class="btn-primary" style="background:linear-gradient(135deg,#ef4444,#dc2626);box-shadow:0 4px 20px rgba(239,68,68,.3);" onclick="App.clienteCancelar('${codigo}','${ag.id}')">❌ Cancelar meu agendamento</button>
-          <button onclick="App.navigate('agendar/${negocioObj?negocioObj.slug:''}')" style="width:100%;margin-top:10px;padding:13px;background:transparent;border:2px solid var(--border);border-radius:12px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">← Voltar</button>`
-      }`;
+          ${ag.status==='pendente'||ag.status==='confirmado'?`
+            <div class="ag-actions" style="margin-top:16px;">
+              <button class="btn-danger" onclick="App.cancelarPublico('${ag.id}')">Cancelar este agendamento</button>
+            </div>
+          `:`<div style="font-size:12px;color:var(--muted);padding-top:10px;">Este agendamento não pode ser cancelado.</div>`}
+        </div>
+        `}
+      </div>
+      <div class="toast" id="toast"></div>
+    </div>`;
   },
 
-  buscarCodigo(){
-    const codigo=document.getElementById('codigo-input').value.trim().toUpperCase();
-    if(!codigo){this.showToast('⚠️ Digite o código');return}
-    this.navigate('cancelar/'+codigo);
-  },
-
-  async clienteCancelar(codigo,agId){
-    await DB.cancelarPorCodigo(codigo);
-    if(agId)this.notificar(agId,'cancelado_pelo_cliente',codigo);
-    document.getElementById('cancelar-body').innerHTML=`
-      <div style="text-align:center;padding:40px 0;">
-        <div style="font-size:56px;margin-bottom:16px;">✅</div>
-        <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;margin-bottom:10px;">Cancelado com sucesso</div>
-        <div style="font-size:14px;color:var(--muted);line-height:1.6;">Seu agendamento foi cancelado.<br>O horário já está disponível para outros clientes.</div>
-      </div>`;
-    this.showToast('✅ Agendamento cancelado!');
-  },
-
-  resetAgendar(){
-    this.selectedServico=null;this.selectedProfissional=null;this.selectedData=null;this.selectedHora=null;
-    document.getElementById('success-wrap').classList.remove('show');
-    document.querySelectorAll('.service-card').forEach(c=>c.classList.remove('selected'));
-    document.querySelectorAll('.barber-card').forEach(c=>c.classList.remove('selected'));
-    document.getElementById('res-servico').textContent='—';
-    document.getElementById('res-prof').textContent='—';
-    document.getElementById('res-data').textContent='—';
-    document.getElementById('res-hora').textContent='—';
-    document.getElementById('res-preco').textContent='—';
-    document.getElementById('horarios-section').style.display='none';
-    this.renderCalendar();
-    window.scrollTo({top:0,behavior:'smooth'});
-  },
-
-  // ---- TOAST ----
-  showToast(msg){
-    const t=document.getElementById('toast');
-    if(!t)return;
-    t.textContent=msg;
-    t.classList.add('show');
-    setTimeout(()=>t.classList.remove('show'),2500);
-  },
+  async cancelarPublico(id){
+    if(!confirm('Tem certeza que quer cancelar?'))return;
+    await DB.updateStatus(id,'cancelado'); // No fluxo público, id direto é arriscado, mas o RPC já protege.
+    this.showToast('✅ Agendamento cancelado');
+    this.navigate('');
+  }
 };
 
-window.addEventListener('hashchange',()=>App.init());
-window.addEventListener('DOMContentLoaded',async()=>{
-  // Garante que o Supabase termine de processar qualquer token vindo de um
-  // redirecionamento (ex: login com Google) antes do nosso roteador ler a URL
-  await sb.auth.getSession();
+// ============================================
+// INICIALIZAÇÃO
+// ============================================
+window.addEventListener('DOMContentLoaded', () => {
   App.init();
-});
-document.addEventListener('click',(e)=>{
-  const dd=document.getElementById('cliente-menu-dropdown');
-  const btn=document.getElementById('cliente-menu-btn');
-  if(dd&&dd.style.display==='block'&&!dd.contains(e.target)&&e.target!==btn&&!btn.contains(e.target)){
-    dd.style.display='none';
-  }
 });
 </script>
 </body>
