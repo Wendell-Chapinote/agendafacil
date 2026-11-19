@@ -731,7 +731,14 @@ async init(){
       </div>
     </div></div>`;
   },
-
+  
+  if(result.error){
+      alert('ERRO DO BANCO: ' + result.error); // Adicione esta linha
+      this.showToast('⚠️ '+result.error);
+      btn.textContent='Confirmar Agendamento'; btn.disabled=false;
+      return;
+    }
+  
   updateSlugPreview(){
     const v=document.getElementById('reg-slug').value.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'');
     document.getElementById('reg-slug').value=v;
