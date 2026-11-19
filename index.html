@@ -2050,7 +2050,7 @@ async init(){
     document.getElementById('sec-form').style.display='block';
   },
 
-  async confirmarAgendamento(){
+   async confirmarAgendamento(){
     if(!this.selectedHora){
       this.showToast('⚠️ Selecione um horário');
       return;
@@ -2080,11 +2080,14 @@ async init(){
     });
 
     if(result.error){
-      this.showToast('⚠️ '+result.error);
+      // AQUI ESTÁ A CORREÇÃO: Mostra o erro real na tela
+      console.error("Erro no agendamento:", result.error);
+      this.showToast('❌ Erro: ' + result.error);
       btn.textContent='Confirmar Agendamento'; btn.disabled=false;
       return;
     }
 
+    // ... (o resto do código de sucesso continua igualzinho para baixo)
     const srv=this.servicosCache.find(s=>s.id===this.selectedServico);
     const prof=this.profissionaisCache.find(p=>p.id===this.selectedProfissional);
     const d=new Date(this.selectedData+'T12:00:00');
