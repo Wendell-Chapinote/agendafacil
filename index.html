@@ -2308,7 +2308,13 @@ async init(){
   }
 };
 
+// Inicializa o app quando a página carrega
 window.addEventListener('DOMContentLoaded', () => {
+  App.init();
+});
+
+// Escuta quando a URL (hash) muda e atualiza a tela automaticamente
+window.addEventListener('hashchange', () => {
   App.init();
 });
 </script>
