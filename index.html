@@ -407,9 +407,13 @@ const DB = {
   // ============================================
   // NEGÓCIOS
   // ============================================
-  async getNegocio(slug){
-    const {data}=await sb.from('negocios').select('*').eq('slug',slug).maybeSingle();
-    return mapNegocio(data);
+  sync getNegocio(slug){
+    // Tenta buscar da view pública (segura). Se não achar, tenta da tabela (para o dono logado)
+    const {data:viewData} = await sb.from('negocios_publicos').select('*').eq('slug',slug).maybeSingle();
+    if(viewData) return mapNegocio(viewData);
+    
+    const {data:tableData} = await sb.from('negocios').select('*').eq('slug',slug).maybeSingle();
+    return mapNegocio(tableData);
   },
   async updateNegocio(id,fields){
     const dbFields={};
