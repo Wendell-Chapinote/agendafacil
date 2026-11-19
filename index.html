@@ -580,7 +580,7 @@ const App = {
   calMonth:new Date().getMonth(),calYear:new Date().getFullYear(),
   cache:{negocioId:null,negocio:null,servicos:[],profissionais:[],agendamentos:[],horarios:{},bloqueios:[]},
 
-   async init(){
+async init(){
     try {
       const oauthIntent=new URLSearchParams(location.search).get('oauth_intent');
       if(oauthIntent){
@@ -603,8 +603,7 @@ const App = {
       else await this.showHome();
     } catch (e) {
       console.error("Erro na inicialização:", e);
-      // Se der qualquer erro (ex: tabela bloqueada), mostra um botão para o usuário não ficar preso
-      document.getElementById('app').innerHTML = '<div style="padding:20px;text-align:center;color:white;background:#1A1A1A;min-height:100vh;display:flex;flex-direction:column;justify-content:center;"><h2>Ops, algo falhou.</h2><p style="font-size:12px;margin:10px 0;">'+e.message+'</p><button onclick="location.reload()" style="padding:10px;background:gold;border:none;border-radius:5px;">Recarregar</button></div>';
+      document.getElementById('app').innerHTML = '<div style="padding:20px;text-align:center;color:white;background:#1A1A1A;min-height:100vh;"><h2>Ops, algo falhou.</h2><p>'+e.message+'</p></div>';
     }
   },
 
