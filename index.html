@@ -407,7 +407,7 @@ const DB = {
   // ============================================
   // NEGÓCIOS
   // ============================================
-   async getNegocio(slug){
+      async getNegocio(slug){
     const {data:viewData} = await sb.from('negocios_publicos').select('*').eq('slug',slug).maybeSingle();
     if(viewData) return mapNegocio(viewData);
     
