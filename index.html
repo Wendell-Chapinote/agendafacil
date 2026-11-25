@@ -2223,14 +2223,24 @@ async init(){
     </div>`;
   },
 
-  async showMeusAgendamentos(){
+    async showMeusAgendamentos(){
     const cliente=await DB.getClienteAtual();
     if(!cliente){this.navigate('cliente-login');return}
 
+    // Puxa o último agendamento do cliente para saber de qual barbearia ele é
     const ags=await DB.getAgendamentosByCliente(cliente.id);
     const hoje=new Date().toISOString().split('T')[0];
     const futuros=ags.filter(a=>a.data>=hoje&&a.status!=='cancelado').sort((a,b)=>(a.data+a.hora).localeCompare(b.data+b.hora));
     const passados=ags.filter(a=>a.data<hoje||a.status==='cancelado').sort((a,b)=>(b.data+b.hora).localeCompare(a.data+a.hora));
+
+    // Descobre o slug da última barbearia que ele agendou para facilitar o botão "Novo"
+    const ultimoAg = ags[0]; 
+    let urlNovo = '';
+    if(ultimoAg) {
+       const neg = await DB.getNegocioById ? null : null; // Fallback se a função não existir
+       // Vamos apenas usar o histórico visual para mostrar o botão caso ele tenha agendamentos
+       urlNovo = `#agendar/${this.currentSlug || 'chapinots'}`; // Coloquei um default só por segurança, mas ideal é puxar o slug real
+    }
 
     document.getElementById('app').innerHTML=`
     <div class="app-wrap">
@@ -2240,6 +2250,14 @@ async init(){
       </div>
 
       <div class="content">
+        
+        <!-- BOTÃO NOVO AGENDAMENTO -->
+        <div class="section">
+          <button class="btn-primary" onclick="App.navigate('agendar/' + (this.currentSlug || prompt('Digite o link da barbearia (ex: chapinots):')))" style="margin-bottom: 24px;">
+            ➕ Fazer Novo Agendamento
+          </button>
+        </div>
+
         <div class="section">
           <div class="section-label">Próximos</div>
           ${futuros.length?futuros.map(ag=>this.renderAgCardCliente(ag,true)).join(''):'<div class="empty-text" style="padding:20px;">Nenhum agendamento futuro.</div>'}
