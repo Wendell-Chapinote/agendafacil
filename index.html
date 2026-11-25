@@ -1075,11 +1075,19 @@ async init(){
   },
 
   async updateAg(id,status){
+    // 1. Atualiza no banco e espera terminar
     await DB.updateStatus(id,status);
-    if(status==='confirmado')this.notificar(id,'confirmado');
-    else if(status==='cancelado')this.notificar(id,'cancelado_pelo_dono');
+    
+    // 2. Dispara a notificação (agora com await para garantir)
+    if(status==='confirmado') await this.notificar(id,'confirmado');
+    else if(status==='cancelado') await this.notificar(id,'cancelado_pelo_dono');
+    
+    // 3. Recarrega os dados do banco
     await this.refreshPainelContent();
+    
+    // 4. Redesenha a tela com os dados novos
     document.getElementById('painel-content').innerHTML=this.renderAgenda();
+    
     this.showToast(status==='confirmado'?'✅ Confirmado!':(status==='cancelado'?'❌ Cancelado':''));
   },
 
