@@ -1820,8 +1820,12 @@ async init(){
     this._toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
   },
 
-  async showAgendarPage(slug){
+    async showAgendarPage(slug){
     this.currentSlug=slug;
+    
+    // Garante que o app sabe quem é o cliente logado
+    const clienteLogado = await DB.getClienteAtual(); 
+
     const negocio=await DB.getNegocio(slug);
     if(!negocio){
       document.getElementById('app').innerHTML='<div style="padding:40px;text-align:center;color:white;background:var(--dark);min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;"><div style="font-size:40px;margin-bottom:16px;">🤔</div><div>Barbearia não encontrada.</div><a href="#" style="color:var(--gold);margin-top:16px;text-decoration:underline;" onclick="App.navigate(\'\')">Voltar ao início</a></div>';
@@ -1835,6 +1839,7 @@ async init(){
     this.servicosCache = servicos;
     this.profissionaisCache = profissionais;
 
+    // Se o cliente já estiver logado, preenche o formulário automaticamente (opcional, mas ajuda)
     document.getElementById('app').innerHTML=`
     <div class="app-wrap">
       <div class="hero">
@@ -1902,9 +1907,9 @@ async init(){
 
         <div class="section" style="display:${this.selectedHora?'block':'none'}" id="sec-form">
           <div class="section-label">4. Seus dados</div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="f-nome" placeholder="Seu nome completo"></div></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="f-tel" placeholder="WhatsApp com DDD"></div></div>
-          <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="f-email" placeholder="Seu e-mail (opcional)"></div></div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">👤</span><input class="form-input" type="text" id="f-nome" value="${clienteLogado ? esc(clienteLogado.nome) : ''}" placeholder="Seu nome completo"></div></div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">📱</span><input class="form-input" type="tel" id="f-tel" value="${clienteLogado ? esc(clienteLogado.tel) : ''}" placeholder="WhatsApp com DDD"></div></div>
+          <div class="form-group"><div class="input-wrap"><span class="input-icon">✉️</span><input class="form-input" type="email" id="f-email" value="${clienteLogado ? esc(clienteLogado.email) : ''}" placeholder="Seu e-mail (opcional)"></div></div>
         </div>
       </div>
 
@@ -2058,7 +2063,7 @@ async init(){
     document.getElementById('sec-form').style.display='block';
   },
 
-   async confirmarAgendamento(){
+     async confirmarAgendamento(){
     if(!this.selectedHora){
       this.showToast('⚠️ Selecione um horário');
       return;
@@ -2068,8 +2073,15 @@ async init(){
     const email=document.getElementById('f-email').value.trim();
     if(!nome||!tel){this.showToast('⚠️ Preencha nome e WhatsApp');return}
 
+    // Puxa o cliente atual novamente para garantir que a sessão está ativa
     const cliente=await DB.getClienteAtual();
-    if(!cliente){this.showToast('⚠️ Faça login como cliente para confirmar');setTimeout(()=>App.navigate('cliente-login'),1500);return}
+    
+    // Se por algum motivo o cliente não estiver logado (sessão expirou), pede para logar
+    if(!cliente){
+      this.showToast('⚠️ Faça login como cliente para confirmar');
+      setTimeout(()=>App.navigate('cliente-login'), 1500);
+      return;
+    }
 
     const btn=document.querySelector('.btn-primary');
     btn.textContent='Agendando...'; btn.disabled=true;
@@ -2088,14 +2100,12 @@ async init(){
     });
 
     if(result.error){
-      // AQUI ESTÁ A CORREÇÃO: Mostra o erro real na tela
       console.error("Erro no agendamento:", result.error);
       this.showToast('❌ Erro: ' + result.error);
       btn.textContent='Confirmar Agendamento'; btn.disabled=false;
       return;
     }
 
-    // ... (o resto do código de sucesso continua igualzinho para baixo)
     const srv=this.servicosCache.find(s=>s.id===this.selectedServico);
     const prof=this.profissionaisCache.find(p=>p.id===this.selectedProfissional);
     const d=new Date(this.selectedData+'T12:00:00');
