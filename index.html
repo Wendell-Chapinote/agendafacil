@@ -2111,7 +2111,7 @@ async init(){
     const d=new Date(this.selectedData+'T12:00:00');
     const dataFmt=d.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
 
-    document.getElementById('app').innerHTML=`
+       document.getElementById('app').innerHTML=`
     <div class="app-wrap">
       <div class="success-wrap show">
         <div class="success-icon">🎉</div>
@@ -2136,10 +2136,10 @@ async init(){
           </div>
           <div class="success-row">
             <div class="s-icon">🎟️</div>
-            <div><div class="s-lbl">Código de Agendamento</div><div class="s-val" style="color:var(--gold);font-size:18px;letter-spacing:1px;">${result.ag.codigo}</div></div>
+            <div><div class="s-lbl">Código de Agendamento</div><div class="s-val" style="color:var(--gold);font-size:18px;letter-spacing:1px;">${codigoReal}</div></div>
           </div>
         </div>
-        <button class="btn-primary" onclick="App.navigate('cancelar/${result.ag.codigo}')">Gerenciar meu agendamento</button>
+        <button class="btn-primary" onclick="App.navigate('meus-agendamentos')">Ver Meus Agendamentos</button>
         <button class="btn-secondary" style="margin-top:12px;background:transparent;color:var(--dark);border:1px solid var(--border);" onclick="App.navigate('')">Voltar ao início</button>
       </div>
     </div>`;
